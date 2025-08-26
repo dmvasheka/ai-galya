@@ -27,9 +27,9 @@ export class ForecastService {
         if (input.type !== "single") {
             const startFmt = formatDDMMYYYY(input.start);
             const endFmt = formatDDMMYYYY(input.end);
-
+            //Forecast period: [Month/Year, Year, or specific date]
             return `You are an experienced numerologist and spiritual guide. Generate detailed, engaging numerology forecasts in English for a large group of people born within the date range [Start ${startFmt}] to [End ${endFmt}].
-
+Forecast period: September 2025  
 Instructions:
 1. Divide the group by Life Path Numbers (1–9) and generate a forecast for each Life Path.
 2. For each Life Path forecast, provide insights for the following areas:

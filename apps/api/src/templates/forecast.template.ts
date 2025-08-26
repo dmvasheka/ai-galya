@@ -93,7 +93,7 @@ p { font-size:16px; margin-bottom:12px; }
 <!-- COVER PAGE -->
 <div class="page cover">
   <div>
-    <h1>Numerology Forecast</h1>
+    <h1>Numerology Forecast September 2025</h1>
     <h2>for ${dateLabel}</h2>
     <p class="subtitle">Personalized prediction</p>
   </div>
