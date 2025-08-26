@@ -7,23 +7,22 @@ export function generateForecastHtml(
         : `${dateInput.start} — ${dateInput.end}`;
 
     const lines = rawText.split(/\r?\n/);
-
-    // --- Разбиваем на блоки ---
     const blocks: { heading: string; content: string[] }[] = [];
     const intro: string[] = [];
     let current: { heading: string; content: string[] } | null = null;
 
-    const lifePathRegex = /^###\s*Life Path(?: Number)?\s*\d+:?\s*(.+)$/i;
+    // Ловим все варианты заголовков Life Path
+    const lifePathRegex = /^###\s*(Life Path(?: Number)? \d+: .+)$/i;
 
     for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed) continue;
-        if (/^(-{3,}|_{3,}|\*{3,})$/.test(trimmed)) continue; // игнорируем разделители
+        if (/^(-{3,}|_{3,}|\*{3,})$/.test(trimmed)) continue;
 
         const lpMatch = trimmed.match(lifePathRegex);
         if (lpMatch) {
             if (current) blocks.push(current);
-            current = { heading: lpMatch[1], content: [] };
+            current = { heading: lpMatch[1], content: [] }; // берем всю строку после ###
         } else if (current) {
             current.content.push(trimmed);
         } else {
@@ -32,9 +31,8 @@ export function generateForecastHtml(
     }
     if (current) blocks.push(current);
 
-    // --- Функция для рендеринга строк в HTML ---
     const renderLine = (line: string) => {
-        const subblockMatch = line.match(/^\*\*(.+?)\*\*:?\s*$/);
+        const subblockMatch = line.match(/^\*\*(.+?)\*\*:?$/);
         if (subblockMatch) return `<h3>${subblockMatch[1]}</h3>`;
         return `<p>${line}</p>`;
     };
@@ -42,7 +40,6 @@ export function generateForecastHtml(
     const renderBlock = (block: { heading: string; content: string[] }) =>
         block.content.map(renderLine).filter(Boolean).join("\n");
 
-    // --- Собираем HTML ---
     return `
 <!DOCTYPE html>
 <html lang="en">
@@ -64,7 +61,7 @@ p { font-size:16px; margin-bottom:12px; }
 </head>
 <body>
 
-<!-- COVER -->
+<!-- COVER PAGE -->
 <div class="page cover">
   <div>
     <h1>Numerology Forecast</h1>
@@ -80,7 +77,7 @@ ${intro.length ? `<div class="page"><h2>Introduction</h2>${intro.map(l => `<p>${
 ${blocks.map(block => {
         const contentHtml = renderBlock(block);
         if (!contentHtml) return "";
-        return `<div class="page"><h2>Life Path: ${block.heading}</h2>${contentHtml}</div>`;
+        return `<div class="page"><h2>${block.heading}</h2>${contentHtml}</div>`;
     }).filter(Boolean).join("\n")}
 
 <!-- CONCLUSION -->
@@ -91,5 +88,5 @@ ${blocks.map(block => {
 
 </body>
 </html>
-  `;
+`;
 }
