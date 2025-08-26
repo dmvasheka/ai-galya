@@ -1,17 +1,25 @@
 export function generateForecastHtml(
     rawText: string,
-    dateInput: string | { start: string; end: string }
+    dateInput: string | { start?: string; end?: string }
 ): string {
     const dateLabel = typeof dateInput === "string"
         ? dateInput
-        : `${dateInput.start} — ${dateInput.end}`;
+        : dateInput.start && dateInput.end
+            ? `${dateInput.start} — ${dateInput.end}`
+            : "";
 
     const lines = rawText.split(/\r?\n/);
-    const blocks: { heading: string; content: string[] }[] = [];
+
+    const blocks: { heading: string; birthRange?: string; content: { subheading?: string; text: string[] }[] }[] = [];
     const intro: string[] = [];
-    let current: { heading: string; content: string[] } | null = null;
+
+    let currentBlock: { heading: string; birthRange?: string; content: { subheading?: string; text: string[] }[] } | null = null;
+    let currentSub: { subheading?: string; text: string[] } | null = null;
 
     const lifePathRegex = /^###\s*(Life Path(?: Number)? \d+: .+)$/i;
+    const birthRangeRegex = /^\(Born.*\)$/i;
+    const subblockRegex1 = /^\*\*(.+?)\*\*:?$/;   // **Career & Finances**
+    const subblockRegex2 = /^####\s*(.+?)\s*:?\s*$/; // #### Career & Finances:
 
     for (const line of lines) {
         const trimmed = line.trim();
@@ -19,32 +27,46 @@ export function generateForecastHtml(
         if (/^(-{3,}|_{3,}|\*{3,})$/.test(trimmed)) continue;
 
         const lpMatch = trimmed.match(lifePathRegex);
+        const birthMatch = trimmed.match(birthRangeRegex);
+        const subMatch1 = trimmed.match(subblockRegex1);
+        const subMatch2 = trimmed.match(subblockRegex2);
+
         if (lpMatch) {
-            if (current) blocks.push(current);
-            current = { heading: lpMatch[1], content: [] };
-        } else if (current) {
-            current.content.push(trimmed);
+            if (currentBlock) {
+                if (currentSub) currentBlock.content.push(currentSub);
+                blocks.push(currentBlock);
+            }
+            currentBlock = { heading: lpMatch[1], content: [] };
+            currentSub = null;
+        } else if (birthMatch && currentBlock) {
+            currentBlock.birthRange = birthMatch[0];
+        } else if (subMatch1 || subMatch2) {
+            if (currentSub && currentBlock) currentBlock.content.push(currentSub);
+            currentSub = { subheading: (subMatch1 ? subMatch1[1] : subMatch2![1]), text: [] };
+        } else if (currentSub) {
+            currentSub.text.push(trimmed);
+        } else if (currentBlock) {
+            if (!currentSub) currentSub = { text: [trimmed] };
         } else {
             intro.push(trimmed);
         }
     }
-    if (current) blocks.push(current);
 
-    const renderLine = (line: string) => {
-        const subblockMatch = line.match(/^\*\*(.+?)\*\*:?$/);
-        if (subblockMatch) return `<h3>${subblockMatch[1]}</h3>`;
-        return `<p>${line}</p>`;
+    if (currentSub && currentBlock) currentBlock.content.push(currentSub);
+    if (currentBlock) blocks.push(currentBlock);
+
+    const renderSubblock = (sub: { subheading?: string; text: string[] }) => {
+        const textHtml = sub.text.map(t => `<p>${t}</p>`).join("\n");
+        if (sub.subheading) {
+            return `<h3>${sub.subheading}</h3>\n${textHtml}`;
+        }
+        return textHtml;
     };
 
-    const renderBlockPages = (block: { heading: string; content: string[] }) => {
-        const paragraphs = block.content.map(renderLine).filter(Boolean);
-        const pages: string[] = [];
-        const pageSize = 12; // количество параграфов на одной странице
-        for (let i = 0; i < paragraphs.length; i += pageSize) {
-            const slice = paragraphs.slice(i, i + pageSize).join("\n");
-            pages.push(`<div class="page"><h2>${block.heading}</h2>${slice}</div>`);
-        }
-        return pages.join("\n");
+    const renderBlockPages = (block: { heading: string; birthRange?: string; content: { subheading?: string; text: string[] }[] }) => {
+        const html = block.content.map(renderSubblock).join("\n");
+        const birthHtml = block.birthRange ? `<p>${block.birthRange}</p>` : "";
+        return `<div class="page"><h2>${block.heading}</h2>${birthHtml}${html}</div>`;
     };
 
     return `

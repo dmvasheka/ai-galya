@@ -1,12 +1,12 @@
 export type DateInput = {
-  type: "single" | "range";
-  date?: string;            // YYYY-MM-DD
-  start?: string;           // YYYY-MM-DD
-  end?: string;             // YYYY-MM-DD
-  locale?: string;          // e.g. "uk-UA", "ru-RU", "en-US"
-  language?: string;        // output language preference
-  theme?: "classic" | "modern";
-  uploadToDrive?: boolean;
+    type: "single" | "range";
+    date?: string;            // YYYY-MM-DD если single
+    start?: string;           // YYYY-MM-DD если range
+    end?: string;             // YYYY-MM-DD если range
+    forecastPeriod?: string;  // "August 2025" | "2025" | "01/09/2025"
+    language?: string;
+    theme?: string;
+    uploadToDrive?: boolean;
 };
 
 export type ForecastResult = {
