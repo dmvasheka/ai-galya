@@ -11,7 +11,6 @@ export function generateForecastHtml(
     const intro: string[] = [];
     let current: { heading: string; content: string[] } | null = null;
 
-    // Ловим все варианты заголовков Life Path
     const lifePathRegex = /^###\s*(Life Path(?: Number)? \d+: .+)$/i;
 
     for (const line of lines) {
@@ -22,7 +21,7 @@ export function generateForecastHtml(
         const lpMatch = trimmed.match(lifePathRegex);
         if (lpMatch) {
             if (current) blocks.push(current);
-            current = { heading: lpMatch[1], content: [] }; // берем всю строку после ###
+            current = { heading: lpMatch[1], content: [] };
         } else if (current) {
             current.content.push(trimmed);
         } else {
@@ -37,8 +36,16 @@ export function generateForecastHtml(
         return `<p>${line}</p>`;
     };
 
-    const renderBlock = (block: { heading: string; content: string[] }) =>
-        block.content.map(renderLine).filter(Boolean).join("\n");
+    const renderBlockPages = (block: { heading: string; content: string[] }) => {
+        const paragraphs = block.content.map(renderLine).filter(Boolean);
+        const pages: string[] = [];
+        const pageSize = 12; // количество параграфов на одной странице
+        for (let i = 0; i < paragraphs.length; i += pageSize) {
+            const slice = paragraphs.slice(i, i + pageSize).join("\n");
+            pages.push(`<div class="page"><h2>${block.heading}</h2>${slice}</div>`);
+        }
+        return pages.join("\n");
+    };
 
     return `
 <!DOCTYPE html>
@@ -74,11 +81,7 @@ p { font-size:16px; margin-bottom:12px; }
 ${intro.length ? `<div class="page"><h2>Introduction</h2>${intro.map(l => `<p>${l}</p>`).join("\n")}</div>` : ""}
 
 <!-- LIFE PATH BLOCKS -->
-${blocks.map(block => {
-        const contentHtml = renderBlock(block);
-        if (!contentHtml) return "";
-        return `<div class="page"><h2>${block.heading}</h2>${contentHtml}</div>`;
-    }).filter(Boolean).join("\n")}
+${blocks.map(renderBlockPages).join("\n")}
 
 <!-- CONCLUSION -->
 <div class="page">
