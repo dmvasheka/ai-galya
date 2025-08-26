@@ -5,6 +5,7 @@ import { PdfService } from "../pdf/pdf.service";
 import { DriveService } from "../drive/drive.service";
 import { randomUUID } from "crypto";
 import { join } from "path";
+import { generateForecastHtml } from "../templates/forecast.template"
 
 @Injectable()
 export class ForecastService {
@@ -15,7 +16,7 @@ export class ForecastService {
   ) {}
 
   private promptFor(input: DateInput) {
-    // Допоміжне форматування YYYY-MM-DD -> DD/MM/YYYY
+    // Helper function to format YYYY-MM-DD -> DD/MM/YYYY
     const formatDDMMYYYY = (s?: string) => {
       if (!s) return "";
       const [y, m, d] = s.split("-");
@@ -23,7 +24,7 @@ export class ForecastService {
       return `${d}/${m}/${y}`;
     };
 
-    // Якщо не "single", використовуємо груповий промпт англійською
+    // If not "single", use group forecast prompt in English
     if (input.type !== "single") {
       const startFmt = formatDDMMYYYY(input.start);
       const endFmt = formatDDMMYYYY(input.end);
@@ -71,45 +72,45 @@ Style:
 Now, based on the given date of birth and forecast period, generate the full numerology forecast.`;
   }
 
-  async createForecast(input: DateInput): Promise<ForecastResult> {
-    const content = await this.llm.generate(this.promptFor(input));
+    async createForecast(input: DateInput): Promise<ForecastResult> {
+        // 1️⃣ Generate text content through LLM
+        const content = await this.llm.generate(this.promptFor(input));
 
-    const lines = content.split(/\r?\n/).filter(Boolean);
-    const title = lines[0].replace(/^#\s*/, "").slice(0, 120) || "Personal Numerology Forecast";
+        const title = content.split(/\r?\n/)[0]?.slice(0, 120) || "Personal Numerology Forecast";
 
-    const sections = [] as ForecastResult["sections"];
-    let current: { heading: string; content: string } | null = null;
-    for (const line of lines.slice(1)) {
-      if (/^##?\s+/.test(line)) {
-        if (current) sections.push(current);
-        current = { heading: line.replace(/^##?\s+/, ""), content: "" };
-      } else if (current) {
-        current.content += line + "\n";
-      }
+        // 2️⃣ Generate PDF through updated generateForecastHtml
+        const html = generateForecastHtml(content, input.type === "single"
+            ? input.date!
+            : { start: input.start!, end: input.end! }
+        );
+
+        const id = randomUUID();
+        const outPath = join(process.cwd(), "generated", `${id}.pdf`);
+
+        await this.pdf.renderHtml(html, outPath);
+
+        // 3️⃣ Generate links
+        const pdfUrl = `${process.env.PUBLIC_BASE_URL}/static/${id}.pdf`;
+
+        let driveFileId: string | undefined;
+        if (input.uploadToDrive) {
+            driveFileId = await this.drive.uploadPdf(outPath, `${title}.pdf`);
+        }
+
+        // 4️⃣ Format sections for API response
+        // Simple Life Path parsing for API
+        const lifePathMatches = [...content.matchAll(/🔹\s*Life Path\s*(\d+)\s*–\s*(.+)/g)];
+        const splits = content.split(/🔹\s*Life Path\s*\d+\s*–\s*.+/).slice(1);
+
+        const sections = lifePathMatches.length
+            ? lifePathMatches.map((m, i) => ({
+                heading: `Life Path ${m[1]}: ${m[2]}`,
+                content: splits[i]?.trim() || ""
+            }))
+            : [{ heading: "Forecast", content }];
+
+        const summary = sections[0]?.content.slice(0, 400) || "Personalized numerology forecast.";
+
+        return { title, summary, sections, pdfUrl, driveFileId };
     }
-    if (current) sections.push(current);
-
-    const id = randomUUID();
-    const outPath = join(process.cwd(), "generated", `${id}.pdf`);
-
-    const summary = sections[0]?.content?.slice(0, 400) || "A personalized numerology reading.";
-
-    await this.pdf.render({
-      id,
-      title,
-      summary,
-      sections,
-      theme: input.theme ?? "modern",
-      outPath
-    });
-
-    const pdfUrl = `${process.env.PUBLIC_BASE_URL}/static/${id}.pdf`;
-
-    let driveFileId: string | undefined = undefined;
-    if (input.uploadToDrive) {
-      driveFileId = await this.drive.uploadPdf(outPath, `${title}.pdf`);
-    }
-
-    return { title, summary, sections, pdfUrl, driveFileId };
-  }
 }
