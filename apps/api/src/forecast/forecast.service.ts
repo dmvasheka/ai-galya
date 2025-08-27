@@ -66,13 +66,20 @@ Instructions for the forecast:
 Style:
 - Write in a captivating, narrative style as if telling the story of the person’s upcoming path.
 - Keep the tone positive, wise, and engaging — a balance of mystical insight and practical guidance.
-- Make the forecast about 500–700 words to provide depth and richness.
+- Make the forecast about 600–700 words to provide depth and richness.
 
 Now, based on the given date of birth and forecast period, generate the full numerology forecast.`;
     }
 
     async createForecast(input: DateInput): Promise<ForecastResult> {
         const rawText = await this.llm.generate(this.promptFor(input));
+
+        // Log the AI service response
+        console.log('=== AI SERVICE RESPONSE ===');
+        console.log('Input:', JSON.stringify(input, null, 2));
+        console.log('Raw AI Response:');
+        console.log(rawText);
+        console.log('=== END AI RESPONSE ===');
 
         const lines = rawText.split(/\r?\n/);
         const lifePathRegex = /^###\s*Life Path\s*\d+:\s*(.+)$/;
@@ -129,8 +136,17 @@ Now, based on the given date of birth and forecast period, generate the full num
 
         const summary = intro.slice(0, 2).join(" ").slice(0, 400) || "Personal numerology reading.";
 
-        // теперь возвращаем id тоже
-        return { id, title: "Numerology Forecast", summary, sections, pdfUrl, driveFileId };
+        const result = { id, title: "Numerology Forecast", summary, sections, pdfUrl, driveFileId };
+
+        // Log the final processed result
+        console.log('=== PROCESSED FORECAST RESULT ===');
+        console.log('Generated sections:', sections.length);
+        console.log('Summary:', summary);
+        console.log('PDF URL:', pdfUrl);
+        console.log('Drive File ID:', driveFileId);
+        console.log('=== END PROCESSED RESULT ===');
+
+        return result;
     }
 
     /**
