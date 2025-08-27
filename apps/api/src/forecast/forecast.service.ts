@@ -82,23 +82,32 @@ Now, based on the given date of birth and forecast period, generate the full num
         console.log('=== END AI RESPONSE ===');
 
         const lines = rawText.split(/\r?\n/);
-        const lifePathRegex = /^###\s*Life Path\s*\d+:\s*(.+)$/;
+        // Updated regex to match #### Life Path 1 format
+        const lifePathRegex = /^#{3,4}\s*Life Path\s*(\d+)(?:\s*:\s*(.+))?$/i;
         const blocks: { heading: string; content: string[] }[] = [];
         let current: { heading: string; content: string[] } | null = null;
         const intro: string[] = [];
 
         for (const line of lines) {
-            const match = line.match(lifePathRegex);
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            if (/^(-{3,}|_{3,}|\*{3,})$/.test(trimmed)) continue;
+
+            const match = trimmed.match(lifePathRegex);
             if (match) {
                 if (current) blocks.push(current);
-                current = { heading: match[1], content: [] };
+                const title = match[2] ? `Life Path ${match[1]}: ${match[2]}` : `Life Path ${match[1]}`;
+                current = { 
+                    heading: title, 
+                    content: [] 
+                };
             } else if (current) {
-                const trimmed = line.trim();
-                if (trimmed && !/^(-{3,}|_{3,}|\*{3,})$/.test(trimmed)) {
-                    current.content.push(trimmed);
+                current.content.push(trimmed);
+            } else {
+                // Skip the main title line
+                if (!/^#{3,4}\s*Numerology Forecasts/i.test(trimmed)) {
+                    intro.push(trimmed);
                 }
-            } else if (line.trim()) {
-                intro.push(line.trim());
             }
         }
         if (current) blocks.push(current);
@@ -106,12 +115,17 @@ Now, based on the given date of birth and forecast period, generate the full num
         const id = randomUUID();
 
         function formatFileName(input: DateInput): string {
+            const formatDate = (dateStr: string) => {
+                const [year, month, day] = dateStr.split("-");
+                return `${month}-${day}-${year}`;
+            };
+
             if (input.type !== "single") {
-                const start = input.start ? input.start.split("-").reverse().join("-") : "start";
-                const end = input.end ? input.end.split("-").reverse().join("-") : "end";
+                const start = input.start ? formatDate(input.start) : "start";
+                const end = input.end ? formatDate(input.end) : "end";
                 return `Numerology Forecast_${start}_to_${end}.pdf`;
             }
-            return `Numerology Forecast_${input.date}.pdf`;
+            return `Numerology Forecast_${input.date ? formatDate(input.date) : input.date}.pdf`;
         }
         const fileName = formatFileName(input);
         const outPath = join(process.cwd(), "generated", `${id}.pdf`);
