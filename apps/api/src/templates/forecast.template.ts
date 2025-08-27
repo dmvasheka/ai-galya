@@ -18,8 +18,8 @@ export function generateForecastHtml(
 
     const lifePathRegex = /^###\s*(Life Path(?: Number)? \d+: .+)$/i;
     const birthRangeRegex = /^\(Born.*\)$/i;
-    const subblockRegex1 = /^\*\*(.+?)\*\*:?$/;   // **Career & Finances**
-    const subblockRegex2 = /^####\s*(.+?)\s*:?\s*$/; // #### Career & Finances:
+    const subblockRegex1 = /^\*\*(.+?)\*\*:?$/;
+    const subblockRegex2 = /^####\s*(.+?)\s*:?\s*$/;
 
     for (const line of lines) {
         const trimmed = line.trim();
@@ -77,12 +77,35 @@ export function generateForecastHtml(
 <title>Numerology Forecast</title>
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@400;700&display=swap&subset=cyrillic" rel="stylesheet">
 <style>
+:root {
+  --page-height: 297mm;
+}
 body { margin:0; padding:0; font-family:'Roboto Slab', serif; line-height:1.5; color:#333; }
-.page { width:100%; min-height:100%; padding:60px; box-sizing:border-box; page-break-after: always; }
-.cover { background: linear-gradient(135deg, #1a1a40, #4b0082); color: white; display:flex; justify-content:center; align-items:center; text-align:center; }
+
+/* Страницы */
+.page {
+  width:210mm;
+  min-height: var(--page-height);
+  padding:60px;
+  box-sizing:border-box;
+  page-break-after: always;
+  position: relative;
+  background-color: #fdfaf5; /* нежный фон */
+}
+
+/* Обложка со своим стилем */
+.cover {
+  background: linear-gradient(135deg, #1a1a40, #4b0082);
+  color: white;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  text-align:center;
+}
 .cover h1 { font-size:48px; margin-bottom:20px; }
 .cover h2 { font-size:28px; margin-bottom:10px; }
 .cover .subtitle { font-size:18px; opacity:0.8; }
+
 h2 { font-size:24px; margin-bottom:15px; }
 h3 { font-size:20px; margin-bottom:10px; font-weight:bold; }
 p { font-size:16px; margin-bottom:12px; }
