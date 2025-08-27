@@ -2,7 +2,7 @@ export function generateForecastHtml(
     rawText: string,
     dateInput: string | { start?: string; end?: string }
 ): string {
-    // Форматирование даты
+    // Форматирование даты для титула
     function formatDateRange(dateInput: string | { start?: string; end?: string }): string {
         if (typeof dateInput === "string") return dateInput;
 
@@ -10,7 +10,6 @@ export function generateForecastHtml(
 
         const start = new Date(dateInput.start);
         const end = new Date(dateInput.end);
-
         const monthNames = [
             "January","February","March","April","May","June",
             "July","August","September","October","November","December"
@@ -18,59 +17,58 @@ export function generateForecastHtml(
 
         const startDay = start.getDate().toString().padStart(2, "0");
         const endDay = end.getDate().toString().padStart(2, "0");
-        const monthName = monthNames[start.getMonth()];
+        const startMonth = monthNames[start.getMonth()];
+        const endMonth = monthNames[end.getMonth()];
 
         const startYear = start.getFullYear();
         const endYear = end.getFullYear();
+        const yearLabel = startYear === endYear ? `${startYear}` : `${startYear}–${endYear}`;
 
-        let yearLabel = startYear === endYear ? `${startYear}` : `${startYear}–${endYear}`;
-
-        return `for those born between ${startDay} ${monthName} and ${endDay} ${monthName} ${yearLabel}`;
+        // Если один месяц, повторяем его только один раз
+        const monthPart = startMonth === endMonth ? `${startMonth}` : `${startMonth}–${endMonth}`;
+        return `for those born between ${startDay} ${monthPart} and ${endDay} ${endMonth} ${yearLabel}`;
     }
 
     const dateLabel = formatDateRange(dateInput);
 
-    const lines = rawText.split(/\r?\n/);
+    // Очищаем текст: убираем [0], пустые строки и разделители ---
+    const lines = rawText
+        .split(/\r?\n/)
+        .map(l => l.replace(/^\[0\]\s*/, "").trim())
+        .filter(l => l && l !== "---");
 
-    const blocks: { heading: string; birthRange?: string; content: { subheading?: string; text: string[] }[] }[] = [];
+    const blocks: {
+        heading: string;
+        birthRange?: string;
+        content: { subheading?: string; text: string[] }[];
+    }[] = [];
     const intro: string[] = [];
 
-    let currentBlock: { heading: string; birthRange?: string; content: { subheading?: string; text: string[] }[] } | null = null;
+    let currentBlock: typeof blocks[0] | null = null;
     let currentSub: { subheading?: string; text: string[] } | null = null;
 
-    const lifePathRegex = /^###\s*(Life Path(?: Number)? \d+: .+)$/i;
-    const birthRangeRegex = /^\(Born.*\)$/i;
-    const subblockRegex1 = /^\*\*(.+?)\*\*:?$/;
-    const subblockRegex2 = /^####\s*(.+?)\s*:?\s*$/;
+    const lifePathRegex = /^###?\s*Life Path(?: Number)?\s*\d*[:\s]*(.*)$/i;
+    const subheadingRegex = /^\*{1,2}(.+?)\*{1,2}\s*:?\s*$/;
 
     for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        if (/^(-{3,}|_{3,}|\*{3,})$/.test(trimmed)) continue;
-
-        const lpMatch = trimmed.match(lifePathRegex);
-        const birthMatch = trimmed.match(birthRangeRegex);
-        const subMatch1 = trimmed.match(subblockRegex1);
-        const subMatch2 = trimmed.match(subblockRegex2);
+        const lpMatch = line.match(lifePathRegex);
+        const subMatch = line.match(subheadingRegex);
 
         if (lpMatch) {
             if (currentBlock) {
                 if (currentSub) currentBlock.content.push(currentSub);
                 blocks.push(currentBlock);
             }
-            currentBlock = { heading: lpMatch[1], content: [] };
+            currentBlock = { heading: lpMatch[1].trim(), content: [] };
             currentSub = null;
-        } else if (birthMatch && currentBlock) {
-            currentBlock.birthRange = birthMatch[0];
-        } else if (subMatch1 || subMatch2) {
+        } else if (subMatch) {
             if (currentSub && currentBlock) currentBlock.content.push(currentSub);
-            currentSub = { subheading: (subMatch1 ? subMatch1[1] : subMatch2![1]), text: [] };
-        } else if (currentSub) {
-            currentSub.text.push(trimmed);
+            currentSub = { subheading: subMatch[1].trim(), text: [] };
         } else if (currentBlock) {
-            if (!currentSub) currentSub = { text: [trimmed] };
+            if (!currentSub) currentSub = { text: [] };
+            currentSub.text.push(line);
         } else {
-            intro.push(trimmed);
+            intro.push(line);
         }
     }
 
@@ -79,16 +77,12 @@ export function generateForecastHtml(
 
     const renderSubblock = (sub: { subheading?: string; text: string[] }) => {
         const textHtml = sub.text.map(t => `<p>${t}</p>`).join("\n");
-        if (sub.subheading) {
-            return `<h3>${sub.subheading}</h3>\n${textHtml}`;
-        }
-        return textHtml;
+        return sub.subheading ? `<h3>${sub.subheading}</h3>\n${textHtml}` : textHtml;
     };
 
-    const renderBlockPages = (block: { heading: string; birthRange?: string; content: { subheading?: string; text: string[] }[] }) => {
-        const html = block.content.map(renderSubblock).join("\n");
-        const birthHtml = block.birthRange ? `<p>${block.birthRange}</p>` : "";
-        return `<div class="page"><h2>${block.heading}</h2>${birthHtml}${html}</div>`;
+    const renderBlock = (block: typeof blocks[0]) => {
+        const contentHtml = block.content.map(renderSubblock).join("\n");
+        return `<div class="page"><h2>${block.heading}</h2>${contentHtml}</div>`;
     };
 
     return `
@@ -101,8 +95,8 @@ export function generateForecastHtml(
 <style>
 :root { --page-height: 297mm; }
 body { margin:0; padding:0; font-family:'Roboto Slab', serif; line-height:1.5; color:#333; }
-.page { width:210mm; min-height: var(--page-height); padding:60px; box-sizing:border-box; page-break-after: always; position: relative; background-color: #fdfaf5; }
-.cover { background: linear-gradient(135deg, #1a1a40, #4b0082); color: white; display:flex; justify-content:center; align-items:center; text-align:center; }
+.page { width:210mm; min-height: var(--page-height); padding:60px; box-sizing:border-box; page-break-after: always; background-color:#fdfaf5; }
+.cover { background: linear-gradient(135deg, #1a1a40, #4b0082); color:white; display:flex; justify-content:center; align-items:center; text-align:center; }
 .cover h1 { font-size:48px; margin-bottom:20px; }
 .cover h2 { font-size:28px; margin-bottom:10px; }
 .cover .subtitle { font-size:18px; opacity:0.8; }
@@ -126,7 +120,7 @@ p { font-size:16px; margin-bottom:12px; }
 ${intro.length ? `<div class="page"><h2>Introduction</h2>${intro.map(l => `<p>${l}</p>`).join("\n")}</div>` : ""}
 
 <!-- LIFE PATH BLOCKS -->
-${blocks.map(renderBlockPages).join("\n")}
+${blocks.map(renderBlock).join("\n")}
 
 <!-- CONCLUSION -->
 <div class="page">
