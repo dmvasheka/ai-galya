@@ -96,16 +96,29 @@ Now, based on the given date of birth and forecast period, generate the full num
         if (current) blocks.push(current);
 
         const id = randomUUID();
+
+        function formatFileName(input: DateInput): string {
+            if (input.type !== "single") {
+                const start = input.start ? input.start.split("-").reverse().join("-") : "start";
+                const end = input.end ? input.end.split("-").reverse().join("-") : "end";
+                return `Numerology Forecast_${start}_to_${end}.pdf`;
+            }
+            return `Numerology Forecast_${input.date}.pdf`;
+        }
+        const fileName = formatFileName(input);
         const outPath = join(process.cwd(), "generated", `${id}.pdf`);
-        const html = generateForecastHtml(rawText,
-            input.type === "single" ? input.date! : { start: input.start!, end: input.end! }
+        const html = generateForecastHtml(
+            rawText,
+            input.type === "single"
+                ? input.date!
+                : { start: input.start!, end: input.end! }
         );
         await this.pdf.renderHtml(html, outPath);
         const pdfUrl = `${process.env.PUBLIC_BASE_URL}/static/${id}.pdf`;
 
         let driveFileId: string | undefined;
         if (input.uploadToDrive) {
-            driveFileId = await this.drive.uploadPdf(outPath, `Numerology Forecast.pdf`);
+            driveFileId = await this.drive.uploadPdf(outPath, fileName);
         }
 
         const sections: ForecastResult["sections"] = blocks.map(b => ({
