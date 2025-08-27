@@ -2,13 +2,13 @@ export function generateForecastHtml(
     rawText: string,
     dateInput: string | { start?: string; end?: string }
 ): string {
-    // Форматирование даты для титульной страницы
-    function formatDateRange(dateInput: string | { start?: string; end?: string }): string {
-        if (typeof dateInput === "string") return dateInput;
-        if (!dateInput.start || !dateInput.end) return "";
 
-        const start = new Date(dateInput.start);
-        const end = new Date(dateInput.end);
+    function formatDateRange(input: string | { start?: string; end?: string }): string {
+        if (typeof input === "string") return input;
+        if (!input.start || !input.end) return "";
+
+        const start = new Date(input.start);
+        const end = new Date(input.end);
 
         const monthNames = [
             "January","February","March","April","May","June",
@@ -17,60 +17,65 @@ export function generateForecastHtml(
 
         const startDay = start.getDate().toString().padStart(2, "0");
         const endDay = end.getDate().toString().padStart(2, "0");
-        const startMonth = monthNames[start.getMonth()];
-        const endMonth = monthNames[end.getMonth()];
-        const startYear = start.getFullYear();
-        const endYear = end.getFullYear();
-        const yearLabel = startYear === endYear ? `${startYear}` : `${startYear}–${endYear}`;
+        const monthNameStart = monthNames[start.getMonth()];
+        const monthNameEnd = monthNames[end.getMonth()];
 
-        return `for those born between ${startDay} ${startMonth} and ${endDay} ${endMonth} ${yearLabel}`;
+        const yearLabel = start.getFullYear() === end.getFullYear()
+            ? `${start.getFullYear()}`
+            : `${start.getFullYear()}–${end.getFullYear()}`;
+
+        // Если один месяц — используем один, иначе два
+        const monthText = start.getMonth() === end.getMonth()
+            ? monthNameStart
+            : `${monthNameStart} – ${monthNameEnd}`;
+
+        return `for those born between ${startDay} ${monthText} and ${endDay} ${monthText} ${yearLabel}`;
     }
 
     const dateLabel = formatDateRange(dateInput);
 
-    const lines = rawText.split(/\r?\n/);
+    // Разбиваем на строки, фильтруем пустые и лишние символы
+    const lines = rawText
+        .split(/\r?\n/)
+        .map(l => l.replace(/^\[0\]\s*/, "").trim())
+        .filter(l => l && !/^(-{3,}|_{3,}|\*{3,})$/.test(l));
 
-    // Парсер Life Path и подблоков
+    // Структура блоков Life Path
     const blocks: {
         heading: string;
+        birthRange?: string;
         content: { subheading?: string; text: string[] }[];
     }[] = [];
     const intro: string[] = [];
 
-    let currentBlock: { heading: string; content: { subheading?: string; text: string[] }[] } | null = null;
+    let currentBlock: typeof blocks[0] | null = null;
     let currentSub: { subheading?: string; text: string[] } | null = null;
 
-    const lifePathRegex = /^(?:###|####)?\s*\*?Life Path\s*(?:Number\s*)?(\d+)(?::\s*(.+?))?\*?$/i;
-    const subblockRegex = /^\*\*(.+?)\*\*:?$/;
+    // Регексы для Life Path и подзаголовков
+    const lifePathRegex = /^###?\s*Life Path.*$/i;
+    const subHeadingRegex = /^(\*\*|####|\*)\s*(.+?)(\*\*|$|:)/;
 
     for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        if (/^(-{3,}|_{3,}|\*{3,})$/.test(trimmed)) continue; // игнорируем разделители
-
-        const lpMatch = trimmed.match(lifePathRegex);
-        const subMatch = trimmed.match(subblockRegex);
+        const lpMatch = line.match(lifePathRegex);
+        const subMatch = line.match(subHeadingRegex);
 
         if (lpMatch) {
+            // Закрываем предыдущий блок
             if (currentBlock) {
                 if (currentSub) currentBlock.content.push(currentSub);
                 blocks.push(currentBlock);
             }
-            currentBlock = {
-                heading: `Life Path ${lpMatch[1]}${lpMatch[2] ? ": " + lpMatch[2] : ""}`,
-                content: [],
-            };
+            currentBlock = { heading: line.replace(/^###?\s*/, ""), content: [] };
             currentSub = null;
-        } else if (subMatch && currentBlock) {
-            if (currentSub) currentBlock.content.push(currentSub);
-            currentSub = { subheading: subMatch[1], text: [] };
+        } else if (subMatch) {
+            if (currentSub && currentBlock) currentBlock.content.push(currentSub);
+            currentSub = { subheading: subMatch[2].trim(), text: [] };
         } else if (currentSub) {
-            currentSub.text.push(trimmed);
+            currentSub.text.push(line);
         } else if (currentBlock) {
-            // текст вне подблока
-            currentSub = { text: [trimmed] };
+            if (!currentSub) currentSub = { text: [line] };
         } else {
-            intro.push(trimmed);
+            intro.push(line);
         }
     }
 
@@ -82,9 +87,10 @@ export function generateForecastHtml(
         return sub.subheading ? `<h3>${sub.subheading}</h3>\n${textHtml}` : textHtml;
     };
 
-    const renderBlock = (block: { heading: string; content: { subheading?: string; text: string[] }[] }) => {
+    const renderBlockPages = (block: typeof blocks[0]) => {
         const html = block.content.map(renderSubblock).join("\n");
-        return `<div class="page"><h2>${block.heading}</h2>${html}</div>`;
+        const birthHtml = block.birthRange ? `<p>${block.birthRange}</p>` : "";
+        return `<div class="page"><h2>${block.heading}</h2>${birthHtml}${html}</div>`;
     };
 
     return `
@@ -122,7 +128,7 @@ p { font-size:16px; margin-bottom:12px; }
 ${intro.length ? `<div class="page"><h2>Introduction</h2>${intro.map(l => `<p>${l}</p>`).join("\n")}</div>` : ""}
 
 <!-- LIFE PATH BLOCKS -->
-${blocks.map(renderBlock).join("\n")}
+${blocks.map(renderBlockPages).join("\n")}
 
 <!-- CONCLUSION -->
 <div class="page">
