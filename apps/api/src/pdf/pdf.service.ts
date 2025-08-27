@@ -8,12 +8,22 @@ export class PdfService {
     private async getBrowser() {
         if (!this.browser) {
             this.browser = await puppeteer.launch({
-                headless: true, // new headless mode
+                headless: true,
                 args: ["--no-sandbox", "--disable-setuid-sandbox"],
+            });
+
+            // Додаємо обробник для коректного завершення
+            process.on('SIGINT', async () => {
+                await this.closeBrowser();
+            });
+
+            process.on('SIGTERM', async () => {
+                await this.closeBrowser();
             });
         }
         return this.browser;
     }
+
 
     /**
      * Рендерит произвольный HTML в PDF
@@ -91,9 +101,14 @@ export class PdfService {
     }
 
     async onModuleDestroy() {
+        await this.closeBrowser();
+    }
+
+    private async closeBrowser() {
         if (this.browser) {
             await this.browser.close();
             this.browser = null;
         }
     }
+
 }
