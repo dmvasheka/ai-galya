@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from "@nestjs/common";
+import {Body, Controller, Delete, Param, Post, Query} from "@nestjs/common";
 import { ForecastService } from "./forecast.service";
 import { DateInput } from "@shared/types";
 
@@ -10,4 +10,10 @@ export class ForecastController {
   async create(@Body() body: DateInput) {
     return this.service.createForecast(body);
   }
+
+    @Delete("forecast/:id")
+    async deleteForecast(@Param("id") id: string, @Query("driveId") driveId?: string) {
+        const ok = await this.service.deleteForecast(id, driveId);
+        return { success: ok };
+    }
 }

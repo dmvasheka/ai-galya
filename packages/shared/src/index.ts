@@ -10,9 +10,10 @@ export type DateInput = {
 };
 
 export type ForecastResult = {
+    id: string;
     title: string;
     summary: string;
-    sections: Array<{ heading: string; content: string }>;
-    pdfUrl?: string;          // signed URL from backend
-    driveFileId?: string;     // if uploaded to Drive
+    sections: { heading: string; content: string }[];
+    pdfUrl: string;
+    driveFileId?: string;
 };

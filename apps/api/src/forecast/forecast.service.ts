@@ -6,6 +6,7 @@ import { PdfService } from "../pdf/pdf.service";
 import { DriveService } from "../drive/drive.service";
 import { randomUUID } from "crypto";
 import { join } from "path";
+import { promises as fs } from "fs";  // for deleting local file
 import { generateForecastHtml } from "../templates/forecast.template";
 
 @Injectable()
@@ -128,6 +129,25 @@ Now, based on the given date of birth and forecast period, generate the full num
 
         const summary = intro.slice(0, 2).join(" ").slice(0, 400) || "Personal numerology reading.";
 
-        return { title: "Numerology Forecast", summary, sections, pdfUrl, driveFileId };
+        // теперь возвращаем id тоже
+        return { id, title: "Numerology Forecast", summary, sections, pdfUrl, driveFileId };
+    }
+
+    /**
+     * Удаляет прогноз (локальный PDF и в Google Drive, если есть).
+     */
+    async deleteForecast(id: string, driveFileId?: string): Promise<boolean> {
+        try {
+            const outPath = join(process.cwd(), "generated", `${id}.pdf`);
+            await fs.unlink(outPath).catch(() => null);
+
+            if (driveFileId) {
+                await this.drive.deleteFile(driveFileId).catch(() => null);
+            }
+            return true;
+        } catch (err) {
+            console.error("Ошибка при удалении прогноза:", err);
+            return false;
+        }
     }
 }

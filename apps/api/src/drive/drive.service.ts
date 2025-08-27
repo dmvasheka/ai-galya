@@ -27,4 +27,9 @@ export class DriveService {
 
     return res.data.id!;
   }
+
+    async deleteFile(fileId: string): Promise<void> {
+        const drive = google.drive({ version: "v3", auth: this.oauth2Client });
+        await drive.files.delete({ fileId });
+    }
 }
