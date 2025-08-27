@@ -9,12 +9,10 @@ export function generateForecastHtml(
 
         const start = new Date(input.start);
         const end = new Date(input.end);
-
         const monthNames = [
             "January","February","March","April","May","June",
             "July","August","September","October","November","December"
         ];
-
         const startDay = start.getDate().toString().padStart(2, "0");
         const endDay = end.getDate().toString().padStart(2, "0");
         const monthNameStart = monthNames[start.getMonth()];
@@ -24,7 +22,6 @@ export function generateForecastHtml(
             ? `${start.getFullYear()}`
             : `${start.getFullYear()}–${end.getFullYear()}`;
 
-        // Если один месяц — используем один, иначе два
         const monthText = start.getMonth() === end.getMonth()
             ? monthNameStart
             : `${monthNameStart} – ${monthNameEnd}`;
@@ -51,16 +48,28 @@ export function generateForecastHtml(
     let currentBlock: typeof blocks[0] | null = null;
     let currentSub: { subheading?: string; text: string[] } | null = null;
 
-    // Регексы для Life Path и подзаголовков
+    let conclusionLines: string[] = [];
+    let inConclusion = false;
+
     const lifePathRegex = /^###?\s*Life Path.*$/i;
     const subHeadingRegex = /^(\*\*|####|\*)\s*(.+?)(\*\*|$|:)/;
+    const conclusionRegex = /^###?\s*Conclusion/i;
 
     for (const line of lines) {
+        if (conclusionRegex.test(line)) {
+            inConclusion = true;
+            continue; // не включаем сам заголовок в текст
+        }
+
+        if (inConclusion) {
+            conclusionLines.push(line);
+            continue;
+        }
+
         const lpMatch = line.match(lifePathRegex);
         const subMatch = line.match(subHeadingRegex);
 
         if (lpMatch) {
-            // Закрываем предыдущий блок
             if (currentBlock) {
                 if (currentSub) currentBlock.content.push(currentSub);
                 blocks.push(currentBlock);
@@ -91,6 +100,12 @@ export function generateForecastHtml(
         const html = block.content.map(renderSubblock).join("\n");
         const birthHtml = block.birthRange ? `<p>${block.birthRange}</p>` : "";
         return `<div class="page"><h2>${block.heading}</h2>${birthHtml}${html}</div>`;
+    };
+
+    const renderConclusionPage = (lines: string[]) => {
+        if (!lines.length) return `<div class="page"><h2>Conclusion</h2><p>Use this forecast as guidance, but remember your free will.</p></div>`;
+        const html = lines.map(l => `<p>${l}</p>`).join("\n");
+        return `<div class="page"><h2>Conclusion</h2>${html}</div>`;
     };
 
     return `
@@ -131,10 +146,7 @@ ${intro.length ? `<div class="page"><h2>Introduction</h2>${intro.map(l => `<p>${
 ${blocks.map(renderBlockPages).join("\n")}
 
 <!-- CONCLUSION -->
-<div class="page">
-  <h2>Conclusion</h2>
-  <p>Use this forecast as guidance, but remember your free will.</p>
-</div>
+${renderConclusionPage(conclusionLines)}
 
 </body>
 </html>
