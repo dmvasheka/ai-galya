@@ -2,11 +2,33 @@ export function generateForecastHtml(
     rawText: string,
     dateInput: string | { start?: string; end?: string }
 ): string {
-    const dateLabel = typeof dateInput === "string"
-        ? dateInput
-        : dateInput.start && dateInput.end
-            ? `${dateInput.start} — ${dateInput.end}`
-            : "";
+    // Форматирование даты
+    function formatDateRange(dateInput: string | { start?: string; end?: string }): string {
+        if (typeof dateInput === "string") return dateInput;
+
+        if (!dateInput.start || !dateInput.end) return "";
+
+        const start = new Date(dateInput.start);
+        const end = new Date(dateInput.end);
+
+        const monthNames = [
+            "January","February","March","April","May","June",
+            "July","August","September","October","November","December"
+        ];
+
+        const startDay = start.getDate().toString().padStart(2, "0");
+        const endDay = end.getDate().toString().padStart(2, "0");
+        const monthName = monthNames[start.getMonth()];
+
+        const startYear = start.getFullYear();
+        const endYear = end.getFullYear();
+
+        let yearLabel = startYear === endYear ? `${startYear}` : `${startYear}–${endYear}`;
+
+        return `for those born between ${startDay} ${monthName} and ${endDay} ${monthName} ${yearLabel}`;
+    }
+
+    const dateLabel = formatDateRange(dateInput);
 
     const lines = rawText.split(/\r?\n/);
 
@@ -77,35 +99,13 @@ export function generateForecastHtml(
 <title>Numerology Forecast</title>
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@400;700&display=swap&subset=cyrillic" rel="stylesheet">
 <style>
-:root {
-  --page-height: 297mm;
-}
+:root { --page-height: 297mm; }
 body { margin:0; padding:0; font-family:'Roboto Slab', serif; line-height:1.5; color:#333; }
-
-/* Страницы */
-.page {
-  width:210mm;
-  min-height: var(--page-height);
-  padding:60px;
-  box-sizing:border-box;
-  page-break-after: always;
-  position: relative;
-  background-color: #fdfaf5; /* нежный фон */
-}
-
-/* Обложка со своим стилем */
-.cover {
-  background: linear-gradient(135deg, #1a1a40, #4b0082);
-  color: white;
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  text-align:center;
-}
+.page { width:210mm; min-height: var(--page-height); padding:60px; box-sizing:border-box; page-break-after: always; position: relative; background-color: #fdfaf5; }
+.cover { background: linear-gradient(135deg, #1a1a40, #4b0082); color: white; display:flex; justify-content:center; align-items:center; text-align:center; }
 .cover h1 { font-size:48px; margin-bottom:20px; }
 .cover h2 { font-size:28px; margin-bottom:10px; }
 .cover .subtitle { font-size:18px; opacity:0.8; }
-
 h2 { font-size:24px; margin-bottom:15px; }
 h3 { font-size:20px; margin-bottom:10px; font-weight:bold; }
 p { font-size:16px; margin-bottom:12px; }
@@ -117,7 +117,7 @@ p { font-size:16px; margin-bottom:12px; }
 <div class="page cover">
   <div>
     <h1>Numerology Forecast September 2025</h1>
-    <h2>for ${dateLabel}</h2>
+    <h2>${dateLabel}</h2>
     <p class="subtitle">Personalized prediction</p>
   </div>
 </div>
