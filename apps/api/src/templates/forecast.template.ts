@@ -2,14 +2,14 @@ export function generateForecastHtml(
     rawText: string,
     dateInput: string | { start?: string; end?: string }
 ): string {
-    // Форматирование даты для титула
+    // Форматирование даты для титульной страницы
     function formatDateRange(dateInput: string | { start?: string; end?: string }): string {
         if (typeof dateInput === "string") return dateInput;
-
         if (!dateInput.start || !dateInput.end) return "";
 
         const start = new Date(dateInput.start);
         const end = new Date(dateInput.end);
+
         const monthNames = [
             "January","February","March","April","May","June",
             "July","August","September","October","November","December"
@@ -19,56 +19,58 @@ export function generateForecastHtml(
         const endDay = end.getDate().toString().padStart(2, "0");
         const startMonth = monthNames[start.getMonth()];
         const endMonth = monthNames[end.getMonth()];
-
         const startYear = start.getFullYear();
         const endYear = end.getFullYear();
         const yearLabel = startYear === endYear ? `${startYear}` : `${startYear}–${endYear}`;
 
-        // Если один месяц, повторяем его только один раз
-        const monthPart = startMonth === endMonth ? `${startMonth}` : `${startMonth}–${endMonth}`;
-        return `for those born between ${startDay} ${monthPart} and ${endDay} ${endMonth} ${yearLabel}`;
+        return `for those born between ${startDay} ${startMonth} and ${endDay} ${endMonth} ${yearLabel}`;
     }
 
     const dateLabel = formatDateRange(dateInput);
 
-    // Очищаем текст: убираем [0], пустые строки и разделители ---
-    const lines = rawText
-        .split(/\r?\n/)
-        .map(l => l.replace(/^\[0\]\s*/, "").trim())
-        .filter(l => l && l !== "---");
+    const lines = rawText.split(/\r?\n/);
 
+    // Парсер Life Path и подблоков
     const blocks: {
         heading: string;
-        birthRange?: string;
         content: { subheading?: string; text: string[] }[];
     }[] = [];
     const intro: string[] = [];
 
-    let currentBlock: typeof blocks[0] | null = null;
+    let currentBlock: { heading: string; content: { subheading?: string; text: string[] }[] } | null = null;
     let currentSub: { subheading?: string; text: string[] } | null = null;
 
-    const lifePathRegex = /^###?\s*Life Path(?: Number)?\s*\d*[:\s]*(.*)$/i;
-    const subheadingRegex = /^\*{1,2}(.+?)\*{1,2}\s*:?\s*$/;
+    const lifePathRegex = /^(?:###|####)?\s*\*?Life Path\s*(?:Number\s*)?(\d+)(?::\s*(.+?))?\*?$/i;
+    const subblockRegex = /^\*\*(.+?)\*\*:?$/;
 
     for (const line of lines) {
-        const lpMatch = line.match(lifePathRegex);
-        const subMatch = line.match(subheadingRegex);
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        if (/^(-{3,}|_{3,}|\*{3,})$/.test(trimmed)) continue; // игнорируем разделители
+
+        const lpMatch = trimmed.match(lifePathRegex);
+        const subMatch = trimmed.match(subblockRegex);
 
         if (lpMatch) {
             if (currentBlock) {
                 if (currentSub) currentBlock.content.push(currentSub);
                 blocks.push(currentBlock);
             }
-            currentBlock = { heading: lpMatch[1].trim(), content: [] };
+            currentBlock = {
+                heading: `Life Path ${lpMatch[1]}${lpMatch[2] ? ": " + lpMatch[2] : ""}`,
+                content: [],
+            };
             currentSub = null;
-        } else if (subMatch) {
-            if (currentSub && currentBlock) currentBlock.content.push(currentSub);
-            currentSub = { subheading: subMatch[1].trim(), text: [] };
+        } else if (subMatch && currentBlock) {
+            if (currentSub) currentBlock.content.push(currentSub);
+            currentSub = { subheading: subMatch[1], text: [] };
+        } else if (currentSub) {
+            currentSub.text.push(trimmed);
         } else if (currentBlock) {
-            if (!currentSub) currentSub = { text: [] };
-            currentSub.text.push(line);
+            // текст вне подблока
+            currentSub = { text: [trimmed] };
         } else {
-            intro.push(line);
+            intro.push(trimmed);
         }
     }
 
@@ -80,9 +82,9 @@ export function generateForecastHtml(
         return sub.subheading ? `<h3>${sub.subheading}</h3>\n${textHtml}` : textHtml;
     };
 
-    const renderBlock = (block: typeof blocks[0]) => {
-        const contentHtml = block.content.map(renderSubblock).join("\n");
-        return `<div class="page"><h2>${block.heading}</h2>${contentHtml}</div>`;
+    const renderBlock = (block: { heading: string; content: { subheading?: string; text: string[] }[] }) => {
+        const html = block.content.map(renderSubblock).join("\n");
+        return `<div class="page"><h2>${block.heading}</h2>${html}</div>`;
     };
 
     return `
@@ -95,8 +97,8 @@ export function generateForecastHtml(
 <style>
 :root { --page-height: 297mm; }
 body { margin:0; padding:0; font-family:'Roboto Slab', serif; line-height:1.5; color:#333; }
-.page { width:210mm; min-height: var(--page-height); padding:60px; box-sizing:border-box; page-break-after: always; background-color:#fdfaf5; }
-.cover { background: linear-gradient(135deg, #1a1a40, #4b0082); color:white; display:flex; justify-content:center; align-items:center; text-align:center; }
+.page { width:210mm; min-height: var(--page-height); padding:60px; box-sizing:border-box; page-break-after: always; position: relative; background-color: #fdfaf5; }
+.cover { background: linear-gradient(135deg, #1a1a40, #4b0082); color: white; display:flex; justify-content:center; align-items:center; text-align:center; }
 .cover h1 { font-size:48px; margin-bottom:20px; }
 .cover h2 { font-size:28px; margin-bottom:10px; }
 .cover .subtitle { font-size:18px; opacity:0.8; }
