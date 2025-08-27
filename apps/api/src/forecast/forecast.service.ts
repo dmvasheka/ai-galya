@@ -1,6 +1,6 @@
 // apps/api/src/forecast/forecast.service.ts
 import { Injectable } from "@nestjs/common";
-import { DateInput, ForecastResult } from "@shared/types";
+import {BatchDateInput, BatchForecastResult, DateInput, ForecastResult} from "@shared/types";
 import { LlmService } from "../llm/llm.service";
 import { PdfService } from "../pdf/pdf.service";
 import { DriveService } from "../drive/drive.service";
@@ -164,6 +164,124 @@ Now, based on the given date of birth and forecast period, generate the full num
     }
 
     /**
+     * Batch generation of forecasts for multiple date ranges
+     */
+    async createBatchForecasts(input: BatchDateInput): Promise<BatchForecastResult> {
+        const results: ForecastResult[] = [];
+        const errors: string[] = [];
+        let successful = 0;
+        let failed = 0;
+
+        // Parse birth year range
+        const [startYear, endYear] = input.birthYear.includes('-') 
+            ? input.birthYear.split('-').map(y => parseInt(y))
+            : [parseInt(input.birthYear), parseInt(input.birthYear)];
+
+        const dateRanges = this.generateDateRanges(startYear, endYear, input.splitMonth || false);
+
+        console.log(`=== BATCH GENERATION STARTED ===`);
+        console.log(`Total forecasts to generate: ${dateRanges.length}`);
+        console.log(`Birth year range: ${startYear}-${endYear}`);
+        console.log(`Split months: ${input.splitMonth}`);
+
+        for (const [index, dateRange] of dateRanges.entries()) {
+            try {
+                // Rate limiting: wait between requests to respect OpenAI limits
+                if (index > 0) {
+                    await this.delay(2000); // 2 second delay between requests
+                }
+
+                console.log(`Generating forecast ${index + 1}/${dateRanges.length} for range: ${dateRange.start} to ${dateRange.end}`);
+
+                const forecast = await this.createForecast({
+                    type: "range",
+                    start: dateRange.start,
+                    end: dateRange.end,
+                    language: input.language,
+                    theme: input.theme,
+                    uploadToDrive: input.uploadToDrive
+                });
+
+                // Check file size
+                const filePath = join(process.cwd(), "generated", `${forecast.id}.pdf`);
+                const stats = await fs.stat(filePath);
+                const fileSizeKB = stats.size / 1024;
+
+                if (fileSizeKB < 100) {
+                    console.log(`File too small (${fileSizeKB.toFixed(2)}KB), deleting: ${forecast.id}`);
+                    await this.deleteForecast(forecast.id, forecast.driveFileId);
+                    errors.push(`Forecast for ${dateRange.start} to ${dateRange.end} generated file too small (${fileSizeKB.toFixed(2)}KB)`);
+                    failed++;
+                } else {
+                    results.push(forecast);
+                    successful++;
+                    console.log(`Successfully generated forecast ${index + 1}/${dateRanges.length} (${fileSizeKB.toFixed(2)}KB)`);
+                }
+
+            } catch (error: any) {
+                console.error(`Failed to generate forecast for ${dateRange.start} to ${dateRange.end}:`, error.message);
+                errors.push(`Failed to generate forecast for ${dateRange.start} to ${dateRange.end}: ${error.message}`);
+                failed++;
+
+                // If we hit rate limits, wait longer
+                if (error.message?.includes('rate limit') || error.message?.includes('429')) {
+                    console.log('Rate limit hit, waiting 60 seconds...');
+                    await this.delay(60000);
+                }
+            }
+        }
+
+        console.log(`=== BATCH GENERATION COMPLETED ===`);
+        console.log(`Successful: ${successful}, Failed: ${failed}`);
+
+        return {
+            totalGenerated: dateRanges.length,
+            successful,
+            failed,
+            results,
+            errors
+        };
+    }
+
+    private generateDateRanges(startYear: number, endYear: number, splitMonth: boolean): Array<{start: string, end: string}> {
+        const ranges: Array<{start: string, end: string}> = [];
+
+        for (let year = startYear; year <= endYear; year++) {
+            for (let month = 1; month <= 12; month++) {
+                const monthStr = month.toString().padStart(2, '0');
+
+                if (splitMonth) {
+                    // First half of month (1-15)
+                    ranges.push({
+                        start: `${year}-${monthStr}-01`,
+                        end: `${year}-${monthStr}-15`
+                    });
+
+                    // Second half of month (16-end)
+                    const lastDay = new Date(year, month, 0).getDate();
+                    ranges.push({
+                        start: `${year}-${monthStr}-16`,
+                        end: `${year}-${monthStr}-${lastDay.toString().padStart(2, '0')}`
+                    });
+                } else {
+                    // Full month
+                    const lastDay = new Date(year, month, 0).getDate();
+                    ranges.push({
+                        start: `${year}-${monthStr}-01`,
+                        end: `${year}-${monthStr}-${lastDay.toString().padStart(2, '0')}`
+                    });
+                }
+            }
+        }
+
+        return ranges;
+    }
+
+    private delay(ms: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    /**
      * Удаляет прогноз (локальный PDF и в Google Drive, если есть).
      */
     async deleteForecast(id: string, driveFileId?: string): Promise<boolean> {
@@ -176,7 +294,7 @@ Now, based on the given date of birth and forecast period, generate the full num
             }
             return true;
         } catch (err) {
-            console.error("Ошибка при удалении прогноза:", err);
+            console.error("Error deleting forecast:", err);
             return false;
         }
     }

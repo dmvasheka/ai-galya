@@ -11,9 +11,10 @@ export default function Page() {
   const [meta, setMeta] = useState<any>(null);
 
   async function submit(payload: any) {
-    setLoading(true); setError(null); setPdfUrl(undefined);
+    setLoading(true); setError(null); setPdfUrl(undefined); setMeta(null);
     try {
-      const r = await fetch(process.env.NEXT_PUBLIC_API_URL + "/forecast", {
+      const endpoint = payload.type === "batch" ? "/forecast/batch" : "/forecast";
+      const r = await fetch(process.env.NEXT_PUBLIC_API_URL + endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -21,7 +22,15 @@ export default function Page() {
       if (!r.ok) throw new Error(await r.text());
       const data = await r.json();
       setMeta(data);
-      setPdfUrl(data.pdfUrl);
+
+      // For batch results, show the first successful result or summary
+      if (payload.type === "batch") {
+        if (data.results && data.results.length > 0) {
+          setPdfUrl(data.results[0].pdfUrl);
+        }
+      } else {
+        setPdfUrl(data.pdfUrl);
+      }
     } catch (e: any) {
       setError(e.message ?? "Failed to generate forecast");
     } finally { setLoading(false); }
@@ -85,6 +94,27 @@ export default function Page() {
 
         {meta?.driveFileId && (
           <div className="mt-4 text-green-700 text-sm">Uploaded to Drive. File ID: {meta.driveFileId}</div>
+        )}
+
+        {meta?.totalGenerated && (
+          <div className="mt-4 p-4 bg-gray-100 rounded-lg">
+            <h3 className="font-semibold mb-2">Batch Generation Results</h3>
+            <div className="space-y-1 text-sm">
+              <div>Total forecasts: {meta.totalGenerated}</div>
+              <div className="text-green-600">Successful: {meta.successful}</div>
+              {meta.failed > 0 && <div className="text-red-600">Failed: {meta.failed}</div>}
+              {meta.errors && meta.errors.length > 0 && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-red-600">View errors</summary>
+                  <div className="mt-2 space-y-1">
+                    {meta.errors.map((error: string, index: number) => (
+                      <div key={index} className="text-xs text-red-500">{error}</div>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          </div>
         )}
 
         {pdfUrl && meta && (

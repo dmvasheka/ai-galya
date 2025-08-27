@@ -1,6 +1,6 @@
 import {Body, Controller, Delete, Param, Post, Query} from "@nestjs/common";
 import { ForecastService } from "./forecast.service";
-import { DateInput } from "@shared/types";
+import { DateInput, BatchDateInput } from "@shared/types";
 
 @Controller("forecast")
 export class ForecastController {
@@ -9,6 +9,11 @@ export class ForecastController {
   @Post()
   async create(@Body() body: DateInput) {
     return this.service.createForecast(body);
+  }
+
+  @Post("batch")
+  async createBatch(@Body() body: BatchDateInput) {
+    return this.service.createBatchForecasts(body);
   }
 
     @Delete("forecast/:id")

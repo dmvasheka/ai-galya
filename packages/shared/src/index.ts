@@ -8,7 +8,22 @@ export type DateInput = {
     theme?: string;
     uploadToDrive?: boolean;
 };
+export type BatchDateInput = {
+    type: "batch";
+    birthYear: string; // "1980" or "1980-1982"
+    splitMonth?: boolean; // if true, split each month into two halves
+    language?: string;
+    theme?: "classic" | "modern";
+    uploadToDrive?: boolean;
+};
 
+export type BatchForecastResult = {
+    totalGenerated: number;
+    successful: number;
+    failed: number;
+    results: ForecastResult[];
+    errors: string[];
+};
 export type ForecastResult = {
     id: string;
     title: string;
