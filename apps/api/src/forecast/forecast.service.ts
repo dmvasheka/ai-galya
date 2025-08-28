@@ -202,20 +202,47 @@ Now, based on the given date of birth and forecast period, generate the full num
                     uploadToDrive: input.uploadToDrive
                 });
 
-                // Check file size
-                const filePath = join(process.cwd(), "generated", `${forecast.id}.pdf`);
-                const stats = await fs.stat(filePath);
-                const fileSizeKB = stats.size / 1024;
+                // Check file size and retry if necessary
+                let retryCount = 0;
+                let validForecast = forecast;
+                const maxRetries = 2;
 
-                if (fileSizeKB < 100) {
-                    console.log(`File too small (${fileSizeKB.toFixed(2)}KB), deleting: ${forecast.id}`);
-                    await this.deleteForecast(forecast.id, forecast.driveFileId);
-                    errors.push(`Forecast for ${dateRange.start} to ${dateRange.end} generated file too small (${fileSizeKB.toFixed(2)}KB)`);
-                    failed++;
-                } else {
-                    results.push(forecast);
-                    successful++;
-                    console.log(`Successfully generated forecast ${index + 1}/${dateRanges.length} (${fileSizeKB.toFixed(2)}KB)`);
+                while (retryCount <= maxRetries) {
+                    const filePath = join(process.cwd(), "generated", `${validForecast.id}.pdf`);
+                    const stats = await fs.stat(filePath);
+                    const fileSizeKB = stats.size / 1024;
+
+                    if (fileSizeKB < 130) {
+                        console.log(`File too small (${fileSizeKB.toFixed(2)}KB), deleting: ${validForecast.id}`);
+                        await this.deleteForecast(validForecast.id, validForecast.driveFileId);
+
+                        if (retryCount < maxRetries) {
+                            retryCount++;
+                            console.log(`Retrying generation ${retryCount}/${maxRetries} for range: ${dateRange.start} to ${dateRange.end}`);
+
+                            // Wait a bit before retry
+                            await this.delay(3000);
+
+                            // Regenerate
+                            validForecast = await this.createForecast({
+                                type: "range",
+                                start: dateRange.start,
+                                end: dateRange.end,
+                                language: input.language,
+                                theme: input.theme,
+                                uploadToDrive: input.uploadToDrive
+                            });
+                        } else {
+                            errors.push(`Forecast for ${dateRange.start} to ${dateRange.end} failed after ${maxRetries} retries - file too small (${fileSizeKB.toFixed(2)}KB)`);
+                            failed++;
+                            break;
+                        }
+                    } else {
+                        results.push(validForecast);
+                        successful++;
+                        console.log(`Successfully generated forecast ${index + 1}/${dateRanges.length} (${fileSizeKB.toFixed(2)}KB)${retryCount > 0 ? ` after ${retryCount} retries` : ''}`);
+                        break;
+                    }
                 }
 
             } catch (error: any) {
