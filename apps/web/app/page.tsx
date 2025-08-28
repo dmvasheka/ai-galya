@@ -9,11 +9,42 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | undefined>(undefined);
   const [meta, setMeta] = useState<any>(null);
+  const [progress, setProgress] = useState<any>(null);
+  const [eventSource, setEventSource] = useState<EventSource | null>(null);
 
   async function submit(payload: any) {
-    setLoading(true); setError(null); setPdfUrl(undefined); setMeta(null);
+    setLoading(true); setError(null); setPdfUrl(undefined); setMeta(null); setProgress(null);
+
+    // Close any existing event source
+    if (eventSource) {
+      eventSource.close();
+      setEventSource(null);
+    }
+
     try {
       const endpoint = payload.type === "batch" ? "/forecast/batch" : "/forecast";
+
+      // For batch generation, set up progress tracking
+      if (payload.type === "batch") {
+        const sessionId = `session_${Date.now()}`;
+        payload.sessionId = sessionId;
+
+        // Set up Server-Sent Events for progress tracking
+        const es = new EventSource(`${process.env.NEXT_PUBLIC_API_URL}/forecast/batch/progress/${sessionId}`);
+        setEventSource(es);
+
+        es.onmessage = (event) => {
+          const progressData = JSON.parse(event.data);
+          setProgress(progressData);
+        };
+
+        es.onerror = (error) => {
+          console.error('SSE Error:', error);
+          es.close();
+          setEventSource(null);
+        };
+      }
+
       const r = await fetch(process.env.NEXT_PUBLIC_API_URL + endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -33,7 +64,14 @@ export default function Page() {
       }
     } catch (e: any) {
       setError(e.message ?? "Failed to generate forecast");
-    } finally { setLoading(false); }
+    } finally { 
+      setLoading(false);
+      // Close event source when done
+      if (eventSource) {
+        eventSource.close();
+        setEventSource(null);
+      }
+    }
   }
 
   async function deleteForecast() {
@@ -68,16 +106,44 @@ export default function Page() {
       {/* Full-page loading overlay */}
       {(loading || deleting) && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-8 shadow-2xl">
+          <div className="bg-white rounded-xl p-8 shadow-2xl max-w-md w-full mx-4">
             <div className="flex flex-col items-center gap-4">
               <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-300 border-t-blue-600"></div>
-              <div className="text-center">
+              <div className="text-center w-full">
                 <div className="text-lg font-semibold text-gray-800">
                   {loading ? "Generating Forecast" : "Deleting Forecast"}
                 </div>
-                <div className="text-sm text-gray-500 mt-1">
-                  Please wait...
-                </div>
+
+                {progress && (
+                  <div className="mt-4 space-y-3">
+                    {/* Progress bar */}
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                        style={{ width: `${progress.progress}%` }}
+                      ></div>
+                    </div>
+
+                    {/* Progress text */}
+                    <div className="text-sm text-gray-600">
+                      <div>{progress.currentTask}</div>
+                      <div className="mt-1">
+                        {progress.completedTasks}/{progress.totalTasks} completed
+                      </div>
+                      {progress.estimatedTimeRemaining > 0 && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          Estimated time remaining: {Math.ceil(progress.estimatedTimeRemaining / 60)} min
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {!progress && (
+                  <div className="text-sm text-gray-500 mt-1">
+                    Please wait...
+                  </div>
+                )}
               </div>
             </div>
           </div>

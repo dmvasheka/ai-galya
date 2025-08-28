@@ -26,6 +26,17 @@ export type BatchForecastResult = {
   errors: string[];
 };
 
+export type BatchProgressUpdate = {
+  sessionId: string;
+  totalTasks: number;
+  completedTasks: number;
+  currentTask: string;
+  estimatedTimeRemaining: number; // in seconds
+  averageTaskTime: number; // in seconds
+  startTime: number;
+  progress: number; // percentage 0-100
+};
+
 export type ForecastResult = {
   title: string;
   summary: string;

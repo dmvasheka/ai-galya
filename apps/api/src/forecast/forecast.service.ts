@@ -163,14 +163,25 @@ Now, based on the given date of birth and forecast period, generate the full num
         return result;
     }
 
+    private batchProgressCallbacks = new Map<string, (progress: any) => void>();
+
     /**
-     * Batch generation of forecasts for multiple date ranges
+     * Batch generation of forecasts with progress tracking
      */
-    async createBatchForecasts(input: BatchDateInput): Promise<BatchForecastResult> {
+    async createBatchForecasts(
+        input: BatchDateInput, 
+        sessionId?: string,
+        progressCallback?: (progress: any) => void
+    ): Promise<BatchForecastResult> {
         const results: ForecastResult[] = [];
         const errors: string[] = [];
         let successful = 0;
         let failed = 0;
+
+        // Store progress callback if provided
+        if (sessionId && progressCallback) {
+            this.batchProgressCallbacks.set(sessionId, progressCallback);
+        }
 
         // Parse birth year range
         const [startYear, endYear] = input.birthYear.includes('-') 
@@ -179,13 +190,48 @@ Now, based on the given date of birth and forecast period, generate the full num
 
         const dateRanges = this.generateDateRanges(startYear, endYear, input.splitMonth || false);
 
+        const startTime = Date.now();
+        const taskTimes: number[] = [];
+
         console.log(`=== BATCH GENERATION STARTED ===`);
         console.log(`Total forecasts to generate: ${dateRanges.length}`);
         console.log(`Birth year range: ${startYear}-${endYear}`);
         console.log(`Split months: ${input.splitMonth}`);
 
         for (const [index, dateRange] of dateRanges.entries()) {
+            const taskStartTime = Date.now();
             try {
+                // Update progress
+                const currentTask = `Generating forecast for ${dateRange.start} to ${dateRange.end}`;
+                const progress = Math.round((index / dateRanges.length) * 100);
+
+                // Calculate estimated time remaining
+                const averageTaskTime = taskTimes.length > 0 
+                    ? taskTimes.reduce((a, b) => a + b, 0) / taskTimes.length 
+                    : 30000; // Default 30 seconds per task
+
+                const remainingTasks = dateRanges.length - index;
+                const estimatedTimeRemaining = Math.round((remainingTasks * averageTaskTime) / 1000);
+
+                // Send progress update
+                if (sessionId) {
+                    const progressUpdate = {
+                        sessionId,
+                        totalTasks: dateRanges.length,
+                        completedTasks: index,
+                        currentTask,
+                        estimatedTimeRemaining,
+                        averageTaskTime: Math.round(averageTaskTime / 1000),
+                        startTime,
+                        progress
+                    };
+
+                    const callback = this.batchProgressCallbacks.get(sessionId);
+                    if (callback) {
+                        callback(progressUpdate);
+                    }
+                }
+
                 // Rate limiting: wait between requests to respect OpenAI limits
                 if (index > 0) {
                     await this.delay(2000); // 2 second delay between requests
@@ -240,7 +286,13 @@ Now, based on the given date of birth and forecast period, generate the full num
                     } else {
                         results.push(validForecast);
                         successful++;
-                        console.log(`Successfully generated forecast ${index + 1}/${dateRanges.length} (${fileSizeKB.toFixed(2)}KB)${retryCount > 0 ? ` after ${retryCount} retries` : ''}`);
+
+                        // Track task completion time
+                        const taskEndTime = Date.now();
+                        const taskDuration = taskEndTime - taskStartTime;
+                        taskTimes.push(taskDuration);
+
+                        console.log(`Successfully generated forecast ${index + 1}/${dateRanges.length} (${fileSizeKB.toFixed(2)}KB)${retryCount > 0 ? ` after ${retryCount} retries` : ''} - took ${Math.round(taskDuration/1000)}s`);
                         break;
                     }
                 }
@@ -260,6 +312,28 @@ Now, based on the given date of birth and forecast period, generate the full num
 
         console.log(`=== BATCH GENERATION COMPLETED ===`);
         console.log(`Successful: ${successful}, Failed: ${failed}`);
+
+        // Send final progress update
+        if (sessionId) {
+            const finalProgress = {
+                sessionId,
+                totalTasks: dateRanges.length,
+                completedTasks: dateRanges.length,
+                currentTask: 'Completed',
+                estimatedTimeRemaining: 0,
+                averageTaskTime: taskTimes.length > 0 ? Math.round((taskTimes.reduce((a, b) => a + b, 0) / taskTimes.length) / 1000) : 0,
+                startTime,
+                progress: 100
+            };
+
+            const callback = this.batchProgressCallbacks.get(sessionId);
+            if (callback) {
+                callback(finalProgress);
+            }
+
+            // Clean up callback
+            this.batchProgressCallbacks.delete(sessionId);
+        }
 
         return {
             totalGenerated: dateRanges.length,
