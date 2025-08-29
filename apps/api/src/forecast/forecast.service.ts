@@ -109,6 +109,40 @@ export class ForecastService implements OnModuleInit {
             if (!y || !m || !d) return s;
             return `${d}/${m}/${y}`;
         };
+        const formatDDMM = (s?: string) => {
+            if (!s) return "";
+            const parts = s.split("-");
+            if (parts.length !== 3) return s;
+            const [y, m, d] = parts;
+            return `${d}/${m}`;
+        };
+
+        // Special prompt for dateRange (no birth year required)
+        if (input.type === "dateRange") {
+            const startDM = formatDDMM(input.start);
+            const endDM = formatDDMM(input.end);
+            const periodText = input.forecastPeriod ? String(input.forecastPeriod) : "[Month/Year or Season]";
+            return `You are an experienced numerologist and spiritual guide. Generate detailed, engaging numerology forecasts in English for a large group of people born within the date range [Start ${startDM}] to [End ${endDM}].  
+
+Instructions:  
+1. Divide the group by Life Path Numbers (1–9) and generate a forecast for each Life Path.  
+   - Assume Life Path Numbers can be derived without requiring the birth year.  
+   - Emphasize shared traits, tendencies, and symbolic energies of people born within this date range.  
+
+2. For each Life Path forecast, provide insights for the chosen forecast period ${periodText}. Cover:  
+   - Career & Finances  
+   - Relationships & Family  
+   - Personal Growth & Spirituality  
+   - Health & Well-being  
+
+3. Enhance personalization by referencing the birth month or season (e.g., “Those born in early January carry the resilience of winter combined with the creativity of a Life Path 3”).  
+
+4. Use a captivating, positive, and trustworthy style — forecasts should feel inspiring and tailored for the group.  
+
+5. Each forecast should be around 400–600 words.  
+
+Now, generate forecasts for all Life Path Numbers within the specified date range for the given forecast period.`;
+        }
 
         if (input.type !== "single") {
             const startFmt = formatDDMMYYYY(input.start);
@@ -195,8 +229,8 @@ Now, generate the full numerology forecast for the given date of birth and forec
         console.log('=== END AI RESPONSE ===');
 
         const lines = rawText.split(/\r?\n/);
-        // Updated regex to match #### Life Path 1 format
-        const lifePathRegex = /^#{3,4}\s*Life Path\s*(\d+)(?:\s*:\s*(.+))?$/i;
+        // Updated regex to match headings like "### Life Path 1" or bold "** Life Path Number 1 **"
+        const lifePathRegex = /^(?:#{2,5}\s*|\*\*\s*)Life Path(?:\s*Number)?\s*(\d+)(?:\s*:\s*(.+?))?(?:\s*\*\*)?$/i;
         const blocks: { heading: string; content: string[] }[] = [];
         let current: { heading: string; content: string[] } | null = null;
         const intro: string[] = [];
@@ -314,7 +348,7 @@ Now, generate the full numerology forecast for the given date of birth and forec
 
         // Process the response similar to regular forecast
         const lines = rawText.split(/\r?\n/);
-        const lifePathRegex = /^#{3,4}\s*Life Path\s*(\d+)(?:\s*:\s*(.+))?$/i;
+        const lifePathRegex = /^(?:#{2,5}\s*|\*\*\s*)Life Path(?:\s*Number)?\s*(\d+)(?:\s*:\s*(.+?))?(?:\s*\*\*)?$/i;
         const blocks: { heading: string; content: string[] }[] = [];
         let current: { heading: string; content: string[] } | null = null;
         const intro: string[] = [];
@@ -630,7 +664,7 @@ Now, generate the full numerology forecast for the given date of birth and forec
         console.log('=== END AI RESPONSE ===');
 
         const lines = rawText.split(/\r?\n/);
-        const lifePathRegex = /^#{3,4}\s*Life Path\s*(\d+)(?:\s*:\s*(.+))?$/i;
+        const lifePathRegex = /^(?:#{2,5}\s*|\*\*\s*)Life Path(?:\s*Number)?\s*(\d+)(?:\s*:\s*(.+?))?(?:\s*\*\*)?$/i;
         const blocks: { heading: string; content: string[] }[] = [];
         let current: { heading: string; content: string[] } | null = null;
         const intro: string[] = [];

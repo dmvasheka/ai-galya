@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 
 export type Input = {
-  type: "single" | "range" | "batch";
+  type: "single" | "range" | "dateRange" | "batch";
   date?: string;
   start?: string;
   end?: string;
@@ -12,7 +12,7 @@ export type Input = {
   theme?: "classic" | "modern";
   uploadToDrive?: boolean;
   // New fields to support forecast period selection
-  forecastPeriod?: string;    // for single/range
+  forecastPeriod?: string;    // for single/range/dateRange
   targetPeriod?: string;      // for batch
 };
 
@@ -34,16 +34,20 @@ export default function DateOrRange({ onSubmit }: { onSubmit: (v: Input) => void
     <div className="space-y-4">
       <div className="flex gap-2">
         <button className={`px-3 py-2 rounded-2xl border ${type === "single" ? "bg-black text-white" : "bg-white"}`} onClick={() => setType("single")}>Single date</button>
-        <button className={`px-3 py-2 rounded-2xl border ${type === "range" ? "bg-black text-white" : "bg-white"}`} onClick={() => setType("range")}>Range</button>
+        <button className={`px-3 py-2 rounded-2xl border ${type === "range" ? "bg-black text-white" : "bg-white"}`} onClick={() => setType("range")}>Range (with year)</button>
+        <button className={`px-3 py-2 rounded-2xl border ${type === "dateRange" ? "bg-black text-white" : "bg-white"}`} onClick={() => setType("dateRange")}>Date range (no year)</button>
         <button className={`px-3 py-2 rounded-2xl border ${type === "batch" ? "bg-black text-white" : "bg-white"}`} onClick={() => setType("batch")}>Batch</button>
       </div>
 
       {type === "single" ? (
         <input type="date" value={date} onChange={e => setDate(e.target.value)} className="border rounded-xl px-3 py-2 w-full" />
-      ) : type === "range" ? (
+      ) : type === "range" || type === "dateRange" ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <input type="date" value={start} onChange={e => setStart(e.target.value)} className="border rounded-xl px-3 py-2 w-full" placeholder="Start date" />
           <input type="date" value={end} onChange={e => setEnd(e.target.value)} className="border rounded-xl px-3 py-2 w-full" placeholder="End date" />
+          {type === "dateRange" && (
+            <div className="col-span-1 md:col-span-2 text-xs text-slate-500">Only day and month will be used. Birth year is ignored in this mode.</div>
+          )}
         </div>
       ) : (
         <div className="space-y-3">

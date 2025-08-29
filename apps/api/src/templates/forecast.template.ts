@@ -56,7 +56,7 @@ export function generateForecastHtml(
     let conclusionLines: string[] = [];
     let inConclusion = false;
 
-    const lifePathRegex = /^###?\s*Life Path.*$/i;
+    const lifePathRegex = /^(?:#{2,5}\s*|\*\*\s*)Life Path(?:\s*Number)?\s*.*$/i;
     const subHeadingRegex = /^(\*\*|####|\*)\s*(.+?)(\*\*|$|:)/;
     const conclusionRegex = /^###?\s*Conclusion/i;
 
@@ -79,7 +79,7 @@ export function generateForecastHtml(
                 if (currentSub) currentBlock.content.push(currentSub);
                 blocks.push(currentBlock);
             }
-            currentBlock = { heading: line.replace(/^###?\s*/, ""), content: [] };
+            currentBlock = { heading: line.replace(/^#{2,5}\s*/, "").replace(/^\*\*\s*|\s*\*\*$/g, ""), content: [] };
             currentSub = null;
         } else if (subMatch) {
             if (currentSub && currentBlock) currentBlock.content.push(currentSub);
@@ -112,6 +112,11 @@ export function generateForecastHtml(
         const html = lines.map(l => `<p>${l}</p>`).join("\n");
         return `<div class="page"><h2>Conclusion</h2>${html}</div>`;
     };
+
+    // Fallback: if no Life Path blocks were parsed, render the raw text as a single page
+    const blocksHtml = blocks.length
+        ? blocks.map(renderBlockPages).join("\n")
+        : `<div class="page"><h2>Forecast</h2>${lines.map(l => `<p>${l}</p>`).join("\n")}</div>`;
 
     return `
 <!DOCTYPE html>
@@ -148,7 +153,7 @@ p { font-size:16px; margin-bottom:12px; }
 ${intro.length ? `<div class="page"><h2>Introduction</h2>${intro.map(l => `<p>${l}</p>`).join("\n")}</div>` : ""}
 
 <!-- LIFE PATH BLOCKS -->
-${blocks.map(renderBlockPages).join("\n")}
+${blocksHtml}
 
 <!-- CONCLUSION -->
 ${renderConclusionPage(conclusionLines)}
