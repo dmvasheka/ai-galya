@@ -135,6 +135,11 @@ export default function Page() {
                           Estimated time remaining: {Math.ceil(progress.estimatedTimeRemaining / 60)} min
                         </div>
                       )}
+                      {progress.historicalOperations > 0 && (
+                        <div className="text-xs text-gray-400 mt-1">
+                          Based on {progress.historicalOperations} previous operations
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

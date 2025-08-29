@@ -1,5 +1,5 @@
 // apps/api/src/forecast/forecast.service.ts
-import { Injectable } from "@nestjs/common";
+import { Injectable, OnModuleInit } from "@nestjs/common";
 import {BatchDateInput, BatchForecastResult, DateInput, ForecastResult} from "@shared/types";
 import { LlmService } from "../llm/llm.service";
 import { PdfService } from "../pdf/pdf.service";
@@ -9,13 +9,98 @@ import { join } from "path";
 import { promises as fs } from "fs";  // for deleting local file
 import { generateForecastHtml } from "../templates/forecast.template";
 
+interface TimingData {
+    taskTimes: number[];
+    lastUpdated: number;
+    totalOperations: number;
+    averageTime: number;
+}
+
 @Injectable()
-export class ForecastService {
+export class ForecastService implements OnModuleInit {
     constructor(
         private llm: LlmService,
         private pdf: PdfService,
         private drive: DriveService
     ) {}
+
+    private batchProgressCallbacks = new Map<string, (progress: any) => void>();
+    private historicalTimingData: TimingData = {
+        taskTimes: [],
+        lastUpdated: Date.now(),
+        totalOperations: 0,
+        averageTime: 30000 // Default 30 seconds
+    };
+    private readonly timingDataPath = join(process.cwd(), 'data', 'timing.json');
+
+    async onModuleInit() {
+        await this.loadHistoricalTiming();
+    }
+
+    private async loadHistoricalTiming(): Promise<void> {
+        try {
+            // Ensure data directory exists
+            const dataDir = join(process.cwd(), 'data');
+            await fs.mkdir(dataDir, { recursive: true });
+
+            // Try to load existing timing data
+            const data = await fs.readFile(this.timingDataPath, 'utf-8');
+            this.historicalTimingData = JSON.parse(data);
+
+            // Keep only recent timing data (last 100 operations)
+            if (this.historicalTimingData.taskTimes.length > 100) {
+                this.historicalTimingData.taskTimes = this.historicalTimingData.taskTimes.slice(-100);
+            }
+
+            console.log(`Loaded historical timing data: ${this.historicalTimingData.totalOperations} total operations, average: ${Math.round(this.historicalTimingData.averageTime / 1000)}s`);
+        } catch (error) {
+            console.log('No historical timing data found, starting with defaults');
+            await this.saveHistoricalTiming();
+        }
+    }
+
+    private async saveHistoricalTiming(): Promise<void> {
+        try {
+            await fs.writeFile(this.timingDataPath, JSON.stringify(this.historicalTimingData, null, 2));
+        } catch (error) {
+            console.error('Failed to save timing data:', error);
+        }
+    }
+
+    private updateHistoricalTiming(newTime: number): void {
+        this.historicalTimingData.taskTimes.push(newTime);
+        this.historicalTimingData.totalOperations++;
+        this.historicalTimingData.lastUpdated = Date.now();
+
+        // Keep only last 100 operations to prevent file from growing too large
+        if (this.historicalTimingData.taskTimes.length > 100) {
+            this.historicalTimingData.taskTimes = this.historicalTimingData.taskTimes.slice(-100);
+        }
+
+        // Calculate new average
+        const allTimes = this.historicalTimingData.taskTimes;
+        this.historicalTimingData.averageTime = allTimes.reduce((a, b) => a + b, 0) / allTimes.length;
+
+        // Save asynchronously (don't wait)
+        this.saveHistoricalTiming().catch(console.error);
+    }
+
+    private calculateEstimatedTime(currentSessionTimes: number[]): number {
+        // Combine historical data with current session data
+        const historicalTimes = this.historicalTimingData.taskTimes;
+        const allTimes = [...historicalTimes, ...currentSessionTimes];
+
+        if (allTimes.length === 0) {
+            return this.historicalTimingData.averageTime;
+        }
+
+        // Give more weight to recent times (current session gets 2x weight)
+        const weightedSum = historicalTimes.reduce((sum, time) => sum + time, 0) + 
+                           currentSessionTimes.reduce((sum, time) => sum + (time * 2), 0);
+        const totalWeight = historicalTimes.length + (currentSessionTimes.length * 2);
+
+        return weightedSum / totalWeight;
+    }
 
     private promptFor(input: DateInput) {
         const formatDDMMYYYY = (s?: string) => {
@@ -163,8 +248,6 @@ Now, based on the given date of birth and forecast period, generate the full num
         return result;
     }
 
-    private batchProgressCallbacks = new Map<string, (progress: any) => void>();
-
     /**
      * Batch generation of forecasts with progress tracking
      */
@@ -205,10 +288,8 @@ Now, based on the given date of birth and forecast period, generate the full num
                 const currentTask = `Generating forecast for ${dateRange.start} to ${dateRange.end}`;
                 const progress = Math.round((index / dateRanges.length) * 100);
 
-                // Calculate estimated time remaining
-                const averageTaskTime = taskTimes.length > 0 
-                    ? taskTimes.reduce((a, b) => a + b, 0) / taskTimes.length 
-                    : 30000; // Default 30 seconds per task
+                // Calculate estimated time remaining using historical data
+                const averageTaskTime = this.calculateEstimatedTime(taskTimes);
 
                 const remainingTasks = dateRanges.length - index;
                 const estimatedTimeRemaining = Math.round((remainingTasks * averageTaskTime) / 1000);
@@ -292,6 +373,9 @@ Now, based on the given date of birth and forecast period, generate the full num
                         const taskDuration = taskEndTime - taskStartTime;
                         taskTimes.push(taskDuration);
 
+                        // Update historical timing data
+                        this.updateHistoricalTiming(taskDuration);
+
                         console.log(`Successfully generated forecast ${index + 1}/${dateRanges.length} (${fileSizeKB.toFixed(2)}KB)${retryCount > 0 ? ` after ${retryCount} retries` : ''} - took ${Math.round(taskDuration/1000)}s`);
                         break;
                     }
@@ -315,13 +399,18 @@ Now, based on the given date of birth and forecast period, generate the full num
 
         // Send final progress update
         if (sessionId) {
+            const sessionAverage = taskTimes.length > 0 ? taskTimes.reduce((a, b) => a + b, 0) / taskTimes.length : 0;
+            const overallAverage = this.calculateEstimatedTime(taskTimes);
+
             const finalProgress = {
                 sessionId,
                 totalTasks: dateRanges.length,
                 completedTasks: dateRanges.length,
                 currentTask: 'Completed',
                 estimatedTimeRemaining: 0,
-                averageTaskTime: taskTimes.length > 0 ? Math.round((taskTimes.reduce((a, b) => a + b, 0) / taskTimes.length) / 1000) : 0,
+                averageTaskTime: Math.round(overallAverage / 1000),
+                sessionAverageTime: Math.round(sessionAverage / 1000),
+                historicalOperations: this.historicalTimingData.totalOperations,
                 startTime,
                 progress: 100
             };
