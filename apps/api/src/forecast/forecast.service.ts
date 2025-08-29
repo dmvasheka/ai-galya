@@ -1,6 +1,6 @@
 // apps/api/src/forecast/forecast.service.ts
 import { Injectable, OnModuleInit } from "@nestjs/common";
-import {BatchDateInput, BatchForecastResult, DateInput, ForecastResult} from "@shared/types";
+import {BatchDateInput, BatchForecastResult, DateInput, ForecastResult, HtmlDataType} from "@shared/types";
 import { LlmService } from "../llm/llm.service";
 import { PdfService } from "../pdf/pdf.service";
 import { DriveService } from "../drive/drive.service";
@@ -157,6 +157,21 @@ Now, based on the given date of birth and forecast period, generate the full num
     }
 
     async createForecast(input: DateInput): Promise<ForecastResult> {
+        // Handle dateRange type specially
+        if (input.type === "dateRange") {
+            return this.createDateRangeForecast(input);
+        }
+
+        // Handle complex forecast periods (multiple months, seasons, etc.)
+        if (input.forecastPeriod) {
+            const periodInfo = this.parseForecastPeriod(input.forecastPeriod);
+            
+            if (periodInfo.type === 'months' && periodInfo.months && periodInfo.months.length > 1) {
+                // For multiple months, create a combined forecast
+                return this.createCombinedMultiPeriodForecast(input, periodInfo);
+            }
+        }
+
         const rawText = await this.llm.generate(this.promptFor(input));
 
         // Log the AI service response
@@ -205,21 +220,34 @@ Now, based on the given date of birth and forecast period, generate the full num
                 return `${month}-${day}-${year}`;
             };
 
-            if (input.type !== "single") {
+            const formatDateOnly = (dateStr: string) => {
+                const [year, month, day] = dateStr.split("-");
+                return `${month}-${day}`;
+            };
+
+            if (input.type === "dateRange") {
+                const start = input.start ? formatDateOnly(input.start) : "start";
+                const end = input.end ? formatDateOnly(input.end) : "end";
+                const period = input.forecastPeriod ? `_${input.forecastPeriod.replace(/[^a-zA-Z0-9]/g, '_')}` : '';
+                return `Numerology Forecast_${start}_to_${end}${period}.pdf`;
+            } else if (input.type !== "single") {
                 const start = input.start ? formatDate(input.start) : "start";
                 const end = input.end ? formatDate(input.end) : "end";
-                return `Numerology Forecast_${start}_to_${end}.pdf`;
+                const period = input.forecastPeriod ? `_${input.forecastPeriod.replace(/[^a-zA-Z0-9]/g, '_')}` : '';
+                return `Numerology Forecast_${start}_to_${end}${period}.pdf`;
             }
-            return `Numerology Forecast_${input.date ? formatDate(input.date) : input.date}.pdf`;
+            const period = input.forecastPeriod ? `_${input.forecastPeriod.replace(/[^a-zA-Z0-9]/g, '_')}` : '';
+            return `Numerology Forecast_${input.date ? formatDate(input.date) : input.date}${period}.pdf`;
         }
+        
         const fileName = formatFileName(input);
         const outPath = join(process.cwd(), "generated", `${id}.pdf`);
-        const html = generateForecastHtml(
-            rawText,
-            input.type === "single"
-                ? input.date!
-                : { start: input.start!, end: input.end! }
-        );
+        
+        const htmlData: HtmlDataType = input.type === "single"
+            ? input.date!
+            : { start: input.start!, end: input.end!, period: input.forecastPeriod };
+                
+        const html = generateForecastHtml(rawText, htmlData);
         await this.pdf.renderHtml(html, outPath);
         const pdfUrl = `${process.env.PUBLIC_BASE_URL}/static/${id}.pdf`;
 
@@ -249,6 +277,86 @@ Now, based on the given date of birth and forecast period, generate the full num
     }
 
     /**
+     * Create combined forecast for multiple periods
+     */
+    private async createCombinedMultiPeriodForecast(input: DateInput, periodInfo: any): Promise<ForecastResult> {
+        const months = periodInfo.months;
+        const year = periodInfo.year;
+        
+        // Generate a combined prompt for multiple months
+        const combinedPeriod = year 
+            ? `${months.join(', ')} ${year}`
+            : months.join(', ');
+
+        const modifiedInput = {
+            ...input,
+            forecastPeriod: combinedPeriod
+        };
+
+        const rawText = await this.llm.generate(this.promptFor(modifiedInput));
+
+        console.log('=== COMBINED MULTI-PERIOD FORECAST ===');
+        console.log('Periods:', combinedPeriod);
+        console.log('=== END COMBINED FORECAST ===');
+
+        // Process the response similar to regular forecast
+        const lines = rawText.split(/\r?\n/);
+        const lifePathRegex = /^#{3,4}\s*Life Path\s*(\d+)(?:\s*:\s*(.+))?$/i;
+        const blocks: { heading: string; content: string[] }[] = [];
+        let current: { heading: string; content: string[] } | null = null;
+        const intro: string[] = [];
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            if (/^(-{3,}|_{3,}|\*{3,})$/.test(trimmed)) continue;
+
+            const match = trimmed.match(lifePathRegex);
+            if (match) {
+                if (current) blocks.push(current);
+                const title = match[2] ? `Life Path ${match[1]}: ${match[2]}` : `Life Path ${match[1]}`;
+                current = { 
+                    heading: title, 
+                    content: [] 
+                };
+            } else if (current) {
+                current.content.push(trimmed);
+            } else {
+                if (!/^#{3,4}\s*Numerology Forecasts/i.test(trimmed)) {
+                    intro.push(trimmed);
+                }
+            }
+        }
+        if (current) blocks.push(current);
+
+        const id = randomUUID();
+        const fileName = `Numerology_Forecast_${combinedPeriod.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+        const outPath = join(process.cwd(), "generated", `${id}.pdf`);
+        
+        const htmlData: HtmlDataType = input.type === "single"
+            ? input.date!
+            : { start: input.start!, end: input.end!, period: combinedPeriod };
+            
+        const html = generateForecastHtml(rawText, htmlData);
+        await this.pdf.renderHtml(html, outPath);
+        const pdfUrl = `${process.env.PUBLIC_BASE_URL}/static/${id}.pdf`;
+
+        let driveFileId: string | undefined;
+        if (input.uploadToDrive) {
+            driveFileId = await this.drive.uploadPdf(outPath, fileName);
+        }
+
+        const sections: ForecastResult["sections"] = blocks.map(b => ({
+            heading: b.heading,
+            content: b.content.join("\n")
+        }));
+
+        const summary = intro.slice(0, 2).join(" ").slice(0, 400) || `Numerology forecast for ${combinedPeriod}.`;
+
+        return { id, title: `Numerology Forecast - ${combinedPeriod}`, summary, sections, pdfUrl, driveFileId };
+    }
+
+    /**
      * Batch generation of forecasts with progress tracking
      */
     async createBatchForecasts(
@@ -272,6 +380,7 @@ Now, based on the given date of birth and forecast period, generate the full num
             : [parseInt(input.birthYear), parseInt(input.birthYear)];
 
         const dateRanges = this.generateDateRanges(startYear, endYear, input.splitMonth || false);
+        const targetPeriod = input.targetPeriod || "the upcoming period";
 
         const startTime = Date.now();
         const taskTimes: number[] = [];
@@ -324,6 +433,7 @@ Now, based on the given date of birth and forecast period, generate the full num
                     type: "range",
                     start: dateRange.start,
                     end: dateRange.end,
+                    forecastPeriod: targetPeriod,
                     language: input.language,
                     theme: input.theme,
                     uploadToDrive: input.uploadToDrive
@@ -355,6 +465,7 @@ Now, based on the given date of birth and forecast period, generate the full num
                                 type: "range",
                                 start: dateRange.start,
                                 end: dateRange.end,
+                                forecastPeriod: targetPeriod,
                                 language: input.language,
                                 theme: input.theme,
                                 uploadToDrive: input.uploadToDrive
@@ -488,4 +599,200 @@ Now, based on the given date of birth and forecast period, generate the full num
             return false;
         }
     }
+
+    /**
+     * Create forecast for date range without year (only day and month)
+     */
+    async createDateRangeForecast(input: DateInput): Promise<ForecastResult> {
+        if (input.type !== "dateRange") {
+            throw new Error("Invalid input type for date range forecast");
+        }
+
+        const rawText = await this.llm.generate(this.promptFor(input));
+
+        console.log('=== AI SERVICE RESPONSE (Date Range) ===');
+        console.log('Input:', JSON.stringify(input, null, 2));
+        console.log('Raw AI Response:');
+        console.log(rawText);
+        console.log('=== END AI RESPONSE ===');
+
+        const lines = rawText.split(/\r?\n/);
+        const lifePathRegex = /^#{3,4}\s*Life Path\s*(\d+)(?:\s*:\s*(.+))?$/i;
+        const blocks: { heading: string; content: string[] }[] = [];
+        let current: { heading: string; content: string[] } | null = null;
+        const intro: string[] = [];
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            if (/^(-{3,}|_{3,}|\*{3,})$/.test(trimmed)) continue;
+
+            const match = trimmed.match(lifePathRegex);
+            if (match) {
+                if (current) blocks.push(current);
+                const title = match[2] ? `Life Path ${match[1]}: ${match[2]}` : `Life Path ${match[1]}`;
+                current = { 
+                    heading: title, 
+                    content: [] 
+                };
+            } else if (current) {
+                current.content.push(trimmed);
+            } else {
+                if (!/^#{3,4}\s*Numerology Forecasts/i.test(trimmed)) {
+                    intro.push(trimmed);
+                }
+            }
+        }
+        if (current) blocks.push(current);
+
+        const id = randomUUID();
+        const fileName = this.formatDateRangeFileName(input);
+        const outPath = join(process.cwd(), "generated", `${id}.pdf`);
+        const htmlData: HtmlDataType = { 
+            start: input.start!, 
+            end: input.end!, 
+            period: input.forecastPeriod 
+        };
+        const html = generateForecastHtml(rawText, htmlData);
+        
+        await this.pdf.renderHtml(html, outPath);
+        const pdfUrl = `${process.env.PUBLIC_BASE_URL}/static/${id}.pdf`;
+
+        let driveFileId: string | undefined;
+        if (input.uploadToDrive) {
+            driveFileId = await this.drive.uploadPdf(outPath, fileName);
+        }
+
+        const sections: ForecastResult["sections"] = blocks.map(b => ({
+            heading: b.heading,
+            content: b.content.join("\n")
+        }));
+
+        const summary = intro.slice(0, 2).join(" ").slice(0, 400) || "Numerology forecast for birth date range.";
+
+        return { id, title: "Numerology Forecast - Date Range", summary, sections, pdfUrl, driveFileId };
+    }
+
+    private formatDateRangeFileName(input: DateInput): string {
+        const formatDDMM = (dateStr?: string) => {
+            if (!dateStr) return "date";
+            const [year, month, day] = dateStr.split("-");
+            return `${day}-${month}`;
+        };
+
+        const start = formatDDMM(input.start);
+        const end = formatDDMM(input.end);
+        const period = input.forecastPeriod ? `_${input.forecastPeriod.replace(/[^a-zA-Z0-9]/g, '_')}` : '';
+        
+        return `Numerology_Forecast_${start}_to_${end}${period}.pdf`;
+    }
+
+    /**
+     * Generate multiple month forecasts
+     */
+    async createMultiMonthForecast(
+        birthDateRange: { start: string; end: string },
+        months: string[],
+        year?: number,
+        options?: { language?: string; theme?: string; uploadToDrive?: boolean }
+    ): Promise<ForecastResult[]> {
+        const results: ForecastResult[] = [];
+
+        for (const month of months) {
+            const forecastPeriod = year ? `${month} ${year}` : month;
+            
+            const input: DateInput = {
+                type: "range",
+                start: birthDateRange.start,
+                end: birthDateRange.end,
+                forecastPeriod,
+                language: options?.language,
+                theme: options?.theme,
+                uploadToDrive: options?.uploadToDrive
+            };
+
+            const forecast = await this.createForecast(input);
+            results.push(forecast);
+
+            // Small delay between requests
+            await this.delay(1000);
+        }
+
+        return results;
+    }
+
+    /**
+     * Generate seasonal forecast
+     */
+    async createSeasonalForecast(
+        birthDateRange: { start: string; end: string },
+        season: "spring" | "summer" | "autumn" | "winter",
+        year?: number,
+        options?: { language?: string; theme?: string; uploadToDrive?: boolean }
+    ): Promise<ForecastResult> {
+        const forecastPeriod = year ? `${season} ${year}` : season;
+        
+        const input: DateInput = {
+            type: "range",
+            start: birthDateRange.start,
+            end: birthDateRange.end,
+            forecastPeriod,
+            language: options?.language,
+            theme: options?.theme,
+            uploadToDrive: options?.uploadToDrive
+        };
+
+        return this.createForecast(input);
+    }
+
+    /**
+     * Parse forecast period string and determine type
+     */
+    private parseForecastPeriod(period: string): { type: string; months?: string[]; season?: string; year?: number } {
+        // Handle multiple months (e.g., "September,October,November")
+        if (period.includes(',')) {
+            const parts = period.split(' ');
+            const monthsPart = parts[0];
+            const year = parts[1] ? parseInt(parts[1]) : undefined;
+            const months = monthsPart.split(',').map(m => m.trim());
+            
+            return { type: 'months', months, year };
+        }
+
+        // Handle seasons
+        const seasons = ['spring', 'summer', 'autumn', 'winter'];
+        const lowerPeriod = period.toLowerCase();
+        
+        for (const season of seasons) {
+            if (lowerPeriod.includes(season)) {
+                const yearMatch = period.match(/\d{4}/);
+                const year = yearMatch ? parseInt(yearMatch[0]) : undefined;
+                return { type: 'season', season, year };
+            }
+        }
+
+        // Handle quarters
+        const quarterMatch = period.match(/Q([1-4])/i);
+        if (quarterMatch) {
+            const yearMatch = period.match(/\d{4}/);
+            const year = yearMatch ? parseInt(yearMatch[0]) : undefined;
+            const quarter = quarterMatch[0].toUpperCase();
+            
+            const quarterMonths = {
+                'Q1': ['January', 'February', 'March'],
+                'Q2': ['April', 'May', 'June'],
+                'Q3': ['July', 'August', 'September'],
+                'Q4': ['October', 'November', 'December']
+            };
+            
+            return { type: 'months', months: quarterMonths[quarter as keyof typeof quarterMonths], year };
+        }
+
+        // Default single period
+        return { type: 'single', year: undefined };
+    }
+
+    /**
+     * Удаляет прогноз (локальный PDF и в Google Drive, если есть).
+     */
 }
