@@ -257,7 +257,7 @@ Now, generate the full numerology forecast for the given date of birth and forec
         const outPath = join(process.cwd(), "generated", `${id}.pdf`);
         
         const htmlData: HtmlDataType = input.type === "single"
-            ? input.date!
+            ? { start: input.date!, end: input.date!, period: input.forecastPeriod }
             : { start: input.start!, end: input.end!, period: input.forecastPeriod };
                 
         const html = generateForecastHtml(rawText, htmlData);

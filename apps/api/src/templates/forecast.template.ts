@@ -30,6 +30,11 @@ export function generateForecastHtml(
     }
 
     const dateLabel = formatDateRange(dateInput);
+    const periodLabel = typeof dateInput === "string"
+        ? ""
+        : (dateInput as any)?.period
+            ? ` ${(dateInput as any).period}`
+            : "";
 
     // Разбиваем на строки, фильтруем пустые и лишние символы
     const lines = rawText
@@ -133,7 +138,7 @@ p { font-size:16px; margin-bottom:12px; }
 <!-- COVER PAGE -->
 <div class="page cover">
   <div>
-    <h1>Numerology Forecast September 2025</h1>
+    <h1>Numerology Forecast${periodLabel}</h1>
     <h2>${dateLabel}</h2>
     <p class="subtitle">Personalized prediction</p>
   </div>
