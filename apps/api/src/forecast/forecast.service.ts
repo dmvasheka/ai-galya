@@ -251,8 +251,10 @@ Now, generate the full numerology forecast for the given date of birth and forec
             } else if (current) {
                 current.content.push(trimmed);
             } else {
-                // Skip the main title line
-                if (!/^#{3,4}\s*Numerology Forecasts/i.test(trimmed)) {
+                // Skip the main title line and common filler like "Certainly!"
+                const isTitle = /^#{2,5}\s*Numerology Forecasts?/i.test(trimmed);
+                const isFiller = /^Certainly[!.,:;]?(\s|$)/i.test(trimmed);
+                if (!isTitle && !isFiller) {
                     intro.push(trimmed);
                 }
             }
@@ -369,7 +371,9 @@ Now, generate the full numerology forecast for the given date of birth and forec
             } else if (current) {
                 current.content.push(trimmed);
             } else {
-                if (!/^#{3,4}\s*Numerology Forecasts/i.test(trimmed)) {
+                const isTitle = /^#{2,5}\s*Numerology Forecasts?/i.test(trimmed);
+                const isFiller = /^Certainly[!.,:;]?(\s|$)/i.test(trimmed);
+                if (!isTitle && !isFiller) {
                     intro.push(trimmed);
                 }
             }
@@ -685,7 +689,9 @@ Now, generate the full numerology forecast for the given date of birth and forec
             } else if (current) {
                 current.content.push(trimmed);
             } else {
-                if (!/^#{3,4}\s*Numerology Forecasts/i.test(trimmed)) {
+                const isTitle = /^#{2,5}\s*Numerology Forecasts?/i.test(trimmed);
+                const isFiller = /^Certainly[!.,:;]?(\s|$)/i.test(trimmed);
+                if (!isTitle && !isFiller) {
                     intro.push(trimmed);
                 }
             }

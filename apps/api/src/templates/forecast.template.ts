@@ -89,7 +89,10 @@ export function generateForecastHtml(
         } else if (currentBlock) {
             if (!currentSub) currentSub = { text: [line] };
         } else {
-            intro.push(line);
+            // Skip generic assistant fillers like "Certainly! ..." in Introduction
+            if (!/^Certainly[!.,:;]?(\s|$)/i.test(line)) {
+                intro.push(line);
+            }
         }
     }
 
@@ -150,7 +153,24 @@ p { font-size:16px; margin-bottom:12px; }
 </div>
 
 <!-- INTRO -->
-${intro.length ? `<div class="page"><h2>Introduction</h2>${intro.map(l => `<p>${l}</p>`).join("\n")}</div>` : ""}
+${intro.length ? (() => {
+  const renderIntroLine = (l: string) => {
+    // Markdown heading ## to ######
+    const hMatch = l.match(/^(#{2,6})\s*(.+)$/);
+    if (hMatch) {
+      const level = Math.min(6, Math.max(2, hMatch[1].length));
+      const tag = `h${level}`;
+      return `<${tag}>${hMatch[2]}</${tag}>`;
+    }
+    // Bold line as subheading
+    const bMatch = l.match(/^\*\*(.+)\*\*$/);
+    if (bMatch) {
+      return `<h3>${bMatch[1].trim()}</h3>`;
+    }
+    return `<p>${l}</p>`;
+  };
+  return `<div class="page"><h2>Introduction</h2>${intro.map(renderIntroLine).join("\n")}</div>`;
+})() : ""}
 
 <!-- LIFE PATH BLOCKS -->
 ${blocksHtml}
