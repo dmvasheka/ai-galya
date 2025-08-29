@@ -11,6 +11,9 @@ export type Input = {
   language?: string;
   theme?: "classic" | "modern";
   uploadToDrive?: boolean;
+  // New fields to support forecast period selection
+  forecastPeriod?: string;    // for single/range
+  targetPeriod?: string;      // for batch
 };
 
 export default function DateOrRange({ onSubmit }: { onSubmit: (v: Input) => void }) {
@@ -23,6 +26,9 @@ export default function DateOrRange({ onSubmit }: { onSubmit: (v: Input) => void
   const [language, setLanguage] = useState("en");
   const [theme, setTheme] = useState<Input["theme"]>("modern");
   const [upload, setUpload] = useState(false);
+  const [forecastPeriod, setForecastPeriod] = useState("");
+
+  const periodPlaceholder = "e.g., September 2025 | September,October 2025 | autumn 2025 | Q1 2025";
 
   return (
     <div className="space-y-4">
@@ -55,6 +61,23 @@ export default function DateOrRange({ onSubmit }: { onSubmit: (v: Input) => void
         </div>
       )}
 
+      {/* Forecast/Target period input */}
+      <div className="space-y-1">
+        <label className="text-sm text-slate-700">
+          {type === "batch" ? "Target period for all forecasts" : "Forecast period"}
+        </label>
+        <input
+          type="text"
+          value={forecastPeriod}
+          onChange={e => setForecastPeriod(e.target.value)}
+          placeholder={periodPlaceholder}
+          className="border rounded-xl px-3 py-2 w-full"
+        />
+        <p className="text-xs text-slate-500">
+          Supports multiple months (comma-separated), seasons (spring, summer, autumn, winter), or quarters (Q1–Q4), with optional year.
+        </p>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <select value={language} onChange={e => setLanguage(e.target.value)} className="border rounded-xl px-3 py-2">
           <option value="en">English</option>
@@ -82,7 +105,8 @@ export default function DateOrRange({ onSubmit }: { onSubmit: (v: Input) => void
           splitMonth, 
           language, 
           theme, 
-          uploadToDrive: upload 
+          uploadToDrive: upload,
+          ...(type === "batch" ? { targetPeriod: forecastPeriod } : { forecastPeriod })
         })}
       >
         {type === "batch" ? "Generate batch forecasts" : "Generate forecast"}
